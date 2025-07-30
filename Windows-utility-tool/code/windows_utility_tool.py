@@ -58,7 +58,7 @@ class WindowsUtilityTool:
         header_frame.pack_propagate(False)
         
         tk.Label(
-            header_frame, text="🛠️ Tiện ích hỗ trợ cài Win dao",
+            header_frame, text="🛠️ Tiện ích hỗ trợ cài Win dạo",
             font=('Arial', 16, 'bold'), fg='white', bg='#2c3e50'
         ).pack(pady=(15, 5))
         
