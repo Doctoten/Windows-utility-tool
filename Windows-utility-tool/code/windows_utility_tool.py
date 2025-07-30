@@ -31,7 +31,7 @@ class WindowsUtilityTool:
         
     def setup_window(self):
         """Thiết lập cửa sổ chính."""
-        self.root.title("🛠️ Tiện ích hỗ trợ cài Win dao v3.1")
+        self.root.title("🛠️ Tiện ích hỗ trợ cài Win dạo v3.1")
         self.root.geometry("520x450")
         self.root.resizable(False, False)
         
