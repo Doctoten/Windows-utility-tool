@@ -1,6 +1,8 @@
 # 🛠️ Tiện ích hỗ trợ cài Windows - Hướng dẫn sử dụng (v3.1)
 
-![alt text](download.gif)
+<p align="center">
+  <img src="download.gif" alt="Demo" />
+</p>
 
 ## Giới thiệu
 **Windows Utility Tool** là một công cụ miễn phí, được thiết kế để giúp người dùng Windows thực hiện các tác vụ quản trị, tối ưu và sao lưu hệ thống một cách nhanh chóng và an toàn. Với giao diện trực quan và hoàn toàn bằng tiếng Việt, ứng dụng này là người bạn đồng hành đáng tin cậy sau mỗi lần cài đặt lại Windows hoặc khi cần "dọn dẹp" máy tính.
