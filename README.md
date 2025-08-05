@@ -57,10 +57,7 @@ Invoke-WebRequest -Uri "https://tinyurl.com/Doctoten" -OutFile "$env:USERPROFILE
 ### 3. Công cụ mạng
 Nhấn nút **"Thiết lập mạng"** để mở cửa sổ công cụ mạng chuyên dụng.
 
-<p align="center">
-  <img src="https://i.imgur.com/your_network_window_image.png" alt="Cửa sổ Thiết lập mạng" width="700"/>
-  <em>Cửa sổ quản lý và thiết lập mạng.</em>
-</p>
+
 
 | Chức năng | Mô tả |
 | :--- | :--- |
