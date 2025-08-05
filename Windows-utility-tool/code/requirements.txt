@@ -1,0 +1,4 @@
+# Dependencies for Windows Utility Tool
+
+# Required for network information (IP, MAC, etc.)
+psutil
