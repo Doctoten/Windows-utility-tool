@@ -2,51 +2,122 @@
 # -*- coding: utf-8 -*-
 """
 Tiện ích hỗ trợ cài Windows - Windows Installation Support Utility
-Phiên bản: 4.4 (Hiển thị thông tin DNS)
+Phiên bản: 5.4 (Tối ưu và Hoàn thiện)
 Phát triển bởi: Doctoten
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import subprocess
-import os
-import sys
-import shutil
+import subprocess, os, sys, shutil, threading, ctypes, psutil, time, re, json
+from datetime import datetime, timezone
 from pathlib import Path
-import threading
-import ctypes
-import psutil
-import time
-import re
-
-# --- Thêm thư viện cho Mutex ---
 from ctypes import wintypes
+from tkinter import TclError
+
+# ==================================================================================================
+# HỆ THỐNG QUẢN LÝ NGÔN NGỮ
+# ==================================================================================================
+LANGUAGES = {
+    'vi': {
+        "app_title": "🛠️ Tiện ích hỗ trợ cài Win dạo", "app_version": "v5.4 (Build by Doctoten)",
+        "win_setup_btn": "🔧 Thiết lập Windows", "net_setup_btn": "🛜 Thiết lập mạng", "bloat_remove_btn": "🗑️ Xóa Bloatware",
+        "wifi_backup_btn": "📶 Sao lưu Wifi", "driver_backup_btn": "💾 Sao lưu Driver",
+        "net_win_title": "Thiết lập mạng", "net_info_frame": "Thông tin Card mạng", "net_col_name": "Tên", "net_col_type": "Trạng thái",
+        "net_col_ip": "Địa chỉ IP", "net_col_mac": "Địa chỉ MAC", "net_col_dns": "DNS Servers", "net_refresh_btn": "🔃 Tải lại",
+        "net_actions_frame": "Chức năng", "net_flush_dns_btn": "Xóa Cache DNS", "net_reset_tcp_btn": "Reset TCP/IP",
+        "net_restore_wifi_btn": "Khôi phục WiFi", "net_dns_frame": "Đổi DNS nhanh (cho card mạng đã chọn)", "net_clear_dns_btn": "Xóa DNS",
+        "net_google_dns": "Google DNS", "net_cloudflare_dns": "Cloudflare DNS",
+        "bloat_win_title": "🗑️ Xóa Bloatware", "bloat_header_subtitle": "Chọn và gỡ bỏ các ứng dụng không cần thiết",
+        "bloat_list_label": "Danh sách ứng dụng có thể gỡ bỏ:", "bloat_col_select": "Chọn", "bloat_col_app_name": "Tên ứng dụng",
+        "bloat_col_package_name": "Tên gói", "bloat_col_version": "Phiên bản", "bloat_col_location": "Đường dẫn",
+        "bloat_load_btn": "🔄 Tải danh sách", "bloat_select_all_btn": "☑️ Chọn tất cả", "bloat_deselect_all_btn": "❌ Bỏ chọn tất cả",
+        "bloat_remove_selected_btn": "🗑️ Xóa đã chọn",
+        "shutdown_timer_frame": "Hẹn giờ Tắt máy", "shutdown_time_label": "Tắt máy sau:", "shutdown_unit_minutes": "Phút",
+        "shutdown_unit_hours": "Giờ", "shutdown_set_btn": "Bắt đầu", "shutdown_cancel_btn": "Hủy lệnh",
+        "status_ready": "Sẵn sàng...", "status_dev": "Chức năng đang được phát triển.", "status_loading_net": "Đang làm mới thông tin mạng...",
+        "status_flushing_dns": "Đang xóa cache DNS...", "status_resettiing_tcp": "Đang reset TCP/IP...", "status_changing_dns": "Đang đổi DNS cho '{iface}'...",
+        "status_restoring_wifi": "Đang khôi phục {i}/{total}...", "status_backing_up_wifi": "Bắt đầu sao lưu WiFi...", "status_loading_wifi_profiles": "Đang lấy danh sách WiFi...",
+        "status_loading_bloatware": "Đang tải danh sách ứng dụng...", "status_removing_bloatware": "Đang xóa {i}/{total}: {name}",
+        "win_setup_win_title": "Thiết lập Windows",
+        "win_setup_header_subtitle": "Chạy kịch bản tối ưu hóa Windows của Chris Titus Tech",
+        "win_setup_stable_btn": "Chạy bản Ổn định (Khuyên dùng)",
+        "win_setup_dev_btn": "Chạy bản Phát triển",
+        "win_setup_info": "Lưu ý: Thao tác này sẽ mở một cửa sổ PowerShell mới để chạy kịch bản. Vui lòng làm theo hướng dẫn trong đó.",
+        "status_running_win_script": "Đang khởi chạy kịch bản thiết lập Windows...",
+        "title_info": "Thông báo", "title_warning": "Cảnh báo", "title_error": "Lỗi", "title_confirm": "Xác nhận",
+        "btn_confirm": "Xác nhận", "btn_cancel": "Hủy",
+        "msg_net_no_iface_selected": "Vui lòng chọn một card mạng từ danh sách.", "msg_bloat_no_app_selected": "Vui lòng chọn ít nhất một ứng dụng để xóa.",
+        "msg_confirm_bloat_remove": "Bạn có chắc chắn muốn xóa {count} ứng dụng sau?\n\n{app_list}\nHành động này không thể hoàn tác!",
+        "msg_wifi_no_card": "Không tìm thấy card mạng WiFi trên hệ thống.", "msg_wifi_no_profile_to_backup": "Không có profile WiFi nào để sao lưu.",
+        "msg_wifi_backup_complete": "Đã xử lý xong. Thành công: {s}/{t}.\nDữ liệu được lưu tại:\n{path}",
+        "msg_wifi_restore_complete": "Đã khôi phục thành công {s}/{t} profile WiFi.", "title_wifi_restore": "Chọn file backup WiFi (.xml)",
+        "msg_dns_flush_success": "Đã xóa cache DNS thành công.", "msg_dns_flush_fail": "Xóa cache DNS thất bại.",
+        "msg_bloat_load_fail": "Lỗi khi tải danh sách: {e}", "msg_net_fetch_fail": "Không thể lấy thông tin mạng: {e}",
+        "title_wifi_backup_dir": "Chọn thư mục để lưu sao lưu WiFi",
+        "msg_wlan_not_found": "Không tìm thấy dịch vụ WLAN.", "status_starting_wlan": "Đang khởi động dịch vụ WLAN...",
+        "msg_wlan_cannot_start": "Không thể khởi động dịch vụ WLAN.",
+        "app_already_running_msg": "Một phiên bản khác của ứng dụng đã đang chạy.",
+        "shutdown_status_set": "Máy sẽ tắt sau {value} {unit}", "shutdown_status_none": "Không có lịch tắt máy.",
+        "shutdown_status_pending": "Đang có lịch tắt máy.",
+        "shutdown_invalid_format": "Vui lòng nhập một số hợp lệ.", "msg_reset_tcp_success": "Reset TCP/IP thành công. Vui lòng khởi động lại máy tính để hoàn tất.",
+        "msg_reset_tcp_fail": "Reset TCP/IP thất bại.", "msg_dns_change_success": "Đã đổi DNS cho '{iface}' thành công.", "msg_dns_change_fail": "Không thể đổi DNS cho '{iface}'.",
+    },
+    'en': {
+        "app_title": "🛠️ Windows Setup Utility", "app_version": "v5.4 (Build by Doctoten)",
+        "win_setup_btn": "🔧 Windows Setup", "net_setup_btn": "🛜 Network Setup", "bloat_remove_btn": "🗑️ Remove Bloatware",
+        "wifi_backup_btn": "📶 Backup Wifi", "driver_backup_btn": "💾 Backup Drivers",
+        "net_win_title": "Network Setup", "net_info_frame": "Network Interface Information", "net_col_name": "Name", "net_col_type": "Status",
+        "net_col_ip": "IP Address", "net_col_mac": "MAC Address", "net_col_dns": "DNS Servers", "net_refresh_btn": "🔃 Refresh",
+        "net_actions_frame": "Actions", "net_flush_dns_btn": "Flush DNS Cache", "net_reset_tcp_btn": "Reset TCP/IP",
+        "net_restore_wifi_btn": "Restore WiFi", "net_dns_frame": "Quick DNS Change (for selected interface)", "net_clear_dns_btn": "Clear DNS",
+        "net_google_dns": "Google DNS", "net_cloudflare_dns": "Cloudflare DNS",
+        "bloat_win_title": "🗑️ Remove Bloatware", "bloat_header_subtitle": "Select and remove unnecessary applications",
+        "bloat_list_label": "List of removable applications:", "bloat_col_select": "Select", "bloat_col_app_name": "App Name",
+        "bloat_col_package_name": "Package Name", "bloat_col_version": "Version", "bloat_col_location": "Install Location",
+        "bloat_load_btn": "🔄 Load List", "bloat_select_all_btn": "☑️ Select All", "bloat_deselect_all_btn": "❌ Deselect All",
+        "bloat_remove_selected_btn": "🗑️ Remove Selected",
+        "shutdown_timer_frame": "Shutdown Timer", "shutdown_time_label": "Shutdown after:", "shutdown_unit_minutes": "Minutes",
+        "shutdown_unit_hours": "Hours", "shutdown_set_btn": "Confirm", "shutdown_cancel_btn": "Cancel",
+        "status_ready": "Ready...", "status_dev": "This feature is under development.", "status_loading_net": "Refreshing network information...",
+        "status_flushing_dns": "Flushing DNS cache...", "status_resettiing_tcp": "Resetting TCP/IP...", "status_changing_dns": "Changing DNS for '{iface}'...",
+        "status_restoring_wifi": "Restoring {i}/{total}...", "status_backing_up_wifi": "Starting WiFi backup...", "status_loading_wifi_profiles": "Loading WiFi profiles...",
+        "status_loading_bloatware": "Loading application list...", "status_removing_bloatware": "Removing {i}/{total}: {name}",
+        "win_setup_win_title": "Windows Setup",
+        "win_setup_header_subtitle": "Run Chris Titus Tech's Windows Utility script",
+        "win_setup_stable_btn": "Run Stable Branch (Recommended)",
+        "win_setup_dev_btn": "Run Dev Branch",
+        "win_setup_info": "Note: This will open a new PowerShell window to run the script. Please follow the instructions there.",
+        "status_running_win_script": "Launching Windows setup script...",
+        "title_info": "Information", "title_warning": "Warning", "title_error": "Error", "title_confirm": "Confirmation",
+        "btn_confirm": "Confirm", "btn_cancel": "Cancel",
+        "msg_net_no_iface_selected": "Please select a network interface from the list.", "msg_bloat_no_app_selected": "Please select at least one application to remove.",
+        "msg_confirm_bloat_remove": "Are you sure you want to remove the following {count} applications?\n\n{app_list}\nThis action cannot be undone!",
+        "msg_wifi_no_card": "No WiFi network interface found on this system.", "msg_wifi_no_profile_to_backup": "No WiFi profiles found to back up.",
+        "msg_wifi_backup_complete": "Processing complete. Success: {s}/{t}.\nData saved at:\n{path}",
+        "msg_wifi_restore_complete": "Successfully restored {s}/{t} WiFi profiles.", "title_wifi_restore": "Select WiFi backup files (.xml)",
+        "msg_dns_flush_success": "Successfully flushed the DNS cache.", "msg_dns_flush_fail": "Failed to flush DNS cache.",
+        "msg_bloat_load_fail": "Failed to load list: {e}", "msg_net_fetch_fail": "Cannot fetch network info: {e}",
+        "title_wifi_backup_dir": "Select folder to save WiFi backup",
+        "msg_wlan_not_found": "WLAN service not found.", "status_starting_wlan": "Starting WLAN service...",
+        "msg_wlan_cannot_start": "Could not start WLAN service.",
+        "app_already_running_msg": "Another instance of the application is already running.",
+        "shutdown_status_set": "PC will shut down in {value} {unit}", "shutdown_status_none": "No shutdown scheduled.",
+        "shutdown_status_pending": "A shutdown is scheduled.",
+        "shutdown_invalid_format": "Please enter a valid number.", "msg_reset_tcp_success": "TCP/IP reset successfully. Please restart your computer to complete.",
+        "msg_reset_tcp_fail": "Failed to reset TCP/IP.", "msg_dns_change_success": "DNS for '{iface}' changed successfully.", "msg_dns_change_fail": "Failed to change DNS for '{iface}'.",
+    }
+}
 
 class SingleInstance:
-    """
-    Sử dụng một 'named mutex' để đảm bảo chỉ có một phiên bản của ứng dụng đang chạy.
-    """
     def __init__(self, name):
         self.mutex_name = name
         self.mutex_handle = None
-        
-        # Định nghĩa các hàm WinAPI cần thiết
         self.CreateMutex = ctypes.windll.kernel32.CreateMutexW
         self.CreateMutex.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
         self.CreateMutex.restype = wintypes.HANDLE
-
         self.GetLastError = ctypes.windll.kernel32.GetLastError
-        self.GetLastError.restype = wintypes.DWORD
-
         self.ReleaseMutex = ctypes.windll.kernel32.ReleaseMutex
-        self.ReleaseMutex.argtypes = [wintypes.HANDLE]
-        self.ReleaseMutex.restype = wintypes.BOOL
-
         self.CloseHandle = ctypes.windll.kernel32.CloseHandle
-        self.CloseHandle.argtypes = [wintypes.HANDLE]
-        self.CloseHandle.restype = wintypes.BOOL
-        
-        # Các hằng số cần thiết
         self.ERROR_ALREADY_EXISTS = 183
 
     def __enter__(self):
@@ -54,7 +125,7 @@ class SingleInstance:
         if self.GetLastError() == self.ERROR_ALREADY_EXISTS:
             self.CloseHandle(self.mutex_handle)
             self.mutex_handle = None
-            raise RuntimeError("Một phiên bản khác của ứng dụng đã đang chạy.")
+            raise RuntimeError("App is already running.")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -63,429 +134,694 @@ class SingleInstance:
             self.CloseHandle(self.mutex_handle)
 
 def is_admin():
-    """Kiểm tra xem ứng dụng có đang chạy với quyền Administrator không."""
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
+    try: return ctypes.windll.shell32.IsUserAnAdmin()
+    except: return False
 
 def resource_path(relative_path):
-    """ Lấy đường dẫn tuyệt đối đến tài nguyên, hoạt động cho cả chế độ dev và PyInstaller """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    try: base_path = sys._MEIPASS
+    except Exception: base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def set_current_process_app_id(app_id):
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
 
 class WindowsUtilityTool:
     def __init__(self, root):
         self.root = root
+        self.current_lang = 'vi'
+        self.net_win = None
+        self.bloat_win = None
+        self.win_setup_win = None
         self.setup_window()
         self.create_widgets()
+        self.update_ui_language()
+        # Kiểm tra lịch tắt máy hiện có
+        self.root.after(200, self.check_existing_shutdown_schedule)
+
+    def _schedule_store_path(self):
+        base = os.getenv('LOCALAPPDATA') or str(Path.home())
+        folder = Path(base) / "WindowsUtilityTool"
+        folder.mkdir(exist_ok=True)
+        return folder / "shutdown_schedule.json"
         
     def setup_window(self):
-        """Thiết lập cửa sổ chính."""
-        self.root.title("🛠️ Tiện ích hỗ trợ cài Win dạo v4.4")
-        self.root.geometry("520x450")
+        self.root.geometry("520x470") # Increased height for new section
         self.root.resizable(False, False)
-        
         self.root.update_idletasks()
         x = (self.root.winfo_screenwidth() // 2) - (520 // 2)
-        y = (self.root.winfo_screenheight() // 2) - (450 // 2)
-        self.root.geometry(f"520x450+{x}+{y}")
-        
+        y = (self.root.winfo_screenheight() // 2) - (470 // 2)
+        self.root.geometry(f"520x470+{x}+{y}")
         try:
-            icon_path = resource_path("icon.ico")
-            self.root.iconbitmap(icon_path)
-        except Exception as e:
-            print(f"Không thể tải icon: {e}")
-            pass
-            
+            self.root.iconbitmap(resource_path("icon.ico"))
+        except Exception:
+            try:
+                icon_png = resource_path("icon.png")
+                if os.path.exists(icon_png):
+                    self.root.iconphoto(True, tk.PhotoImage(file=icon_png))
+            except Exception:
+                pass
         self.root.configure(bg='#f0f0f0')
         
     def create_widgets(self):
-        """Tạo các widget cho giao diện."""
-        header_frame = tk.Frame(self.root, bg='#2c3e50', height=80)
-        header_frame.pack(fill='x', padx=0, pady=0)
-        header_frame.pack_propagate(False)
-        tk.Label(header_frame, text="🛠️ Tiện ích hỗ trợ cài Win dạo", font=('Arial', 16, 'bold'), fg='white', bg='#2c3e50').pack(pady=(15, 5))
-        tk.Label(header_frame, text="Phiên bản hoàn chỉnh v4.4", font=('Arial', 10), fg='#ecf0f1', bg='#2c3e50').pack()
-        content_frame = tk.Frame(self.root, bg='#f0f0f0')
-        content_frame.pack(fill='both', expand=True, padx=20, pady=20)
-        button_style = {'font': ('Arial', 11, 'bold'), 'width': 22, 'height': 2, 'relief': 'raised', 'bd': 2, 'cursor': 'hand2'}
-        row1_frame = tk.Frame(content_frame, bg='#f0f0f0')
-        row1_frame.pack(fill='x', pady=10)
-        tk.Button(row1_frame, text="🔧 Thiết lập Windows", bg='#3498db', fg='white', command=self.windows_setup, **button_style).pack(side='left', padx=10)
-        tk.Button(row1_frame, text="🛜 Thiết lập mạng", bg='#95a5a6', fg='white', command=self.open_network_window, **button_style).pack(side='right', padx=10)
-        row2_frame = tk.Frame(content_frame, bg='#f0f0f0')
-        row2_frame.pack(fill='x', pady=10)
-        tk.Button(row2_frame, text="🗑️ Xóa Bloatware", bg='#e74c3c', fg='white', command=self.remove_bloatware, **button_style).pack(side='left', padx=10)
-        tk.Button(row2_frame, text="📶 Sao lưu Wifi", bg='#f39c12', fg='white', command=self.backup_wifi, **button_style).pack(side='right', padx=10)
-        row3_frame = tk.Frame(content_frame, bg='#f0f0f0')
-        row3_frame.pack(fill='x', pady=10)
-        tk.Button(row3_frame, text="💾 Sao lưu Driver", bg='#27ae60', fg='white', command=self.backup_drivers, **button_style).pack(side='left', padx=10)
-        self.status_var = tk.StringVar(value="Sẵn sàng...")
-        status_frame = tk.Frame(self.root, bg='#34495e', height=30)
-        status_frame.pack(fill='x', side='bottom')
-        status_frame.pack_propagate(False)
-        tk.Label(status_frame, textvariable=self.status_var, font=('Arial', 9), fg='white', bg='#34495e').pack(side='left', padx=10, pady=5)
+        # Header
+        self.header_frame = tk.Frame(self.root, bg='#2c3e50', height=80); self.header_frame.pack(fill='x'); self.header_frame.pack_propagate(False)
+        self.title_label = tk.Label(self.header_frame, font=('Arial', 16, 'bold'), fg='white', bg='#2c3e50'); self.title_label.pack(pady=(15, 5))
+        self.version_label = tk.Label(self.header_frame, font=('Arial', 10), fg='#ecf0f1', bg='#2c3e50'); self.version_label.pack()
+
+        # Content
+        content_frame = tk.Frame(self.root, bg='#f0f0f0'); content_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        btn_style = {'font': ('Arial', 10, 'bold'), 'width': 22, 'height': 2, 'relief': 'raised', 'bd': 2, 'cursor': 'hand2'}
+        
+        r1 = tk.Frame(content_frame, bg='#f0f0f0'); r1.pack(fill='x', pady=5)
+        self.win_setup_btn = tk.Button(r1, bg='#3498db', fg='white', command=self.windows_setup, **btn_style); self.win_setup_btn.pack(side='left', padx=10)
+        self.net_setup_btn = tk.Button(r1, bg='#95a5a6', fg='white', command=self.open_network_window, **btn_style); self.net_setup_btn.pack(side='right', padx=10)
+        
+        r2 = tk.Frame(content_frame, bg='#f0f0f0'); r2.pack(fill='x', pady=5)
+        self.bloat_remove_btn = tk.Button(r2, bg='#e74c3c', fg='white', command=self.open_bloatware_window, **btn_style); self.bloat_remove_btn.pack(side='left', padx=10)
+        self.wifi_backup_btn = tk.Button(r2, bg='#f39c12', fg='white', command=self.backup_wifi, **btn_style); self.wifi_backup_btn.pack(side='right', padx=10)
+
+        r3 = tk.Frame(content_frame, bg='#f0f0f0'); r3.pack(fill='x', pady=5)
+        self.driver_backup_btn = tk.Button(r3, bg='#27ae60', fg='white', command=self.backup_drivers, **btn_style); self.driver_backup_btn.pack(side='left', padx=10)
+        
+        # Status Bar and Language Switcher
+        status_frame = tk.Frame(self.root, bg='#34495e', height=30); status_frame.pack(fill='x', side='bottom'); status_frame.pack_propagate(False)
+        self.status_var = tk.StringVar()
+        self.status_label = tk.Label(status_frame, textvariable=self.status_var, font=('Arial', 9), fg='white', bg='#34495e'); self.status_label.pack(side='left', padx=10, pady=5)
+        
+        self.lang_menu_btn = tk.Menubutton(status_frame, text='Language', bg='#34495e', fg='white', activebackground='#34495e', activeforeground='white', relief='ridge', bd=1, highlightthickness=1, highlightbackground='#2c3e50', highlightcolor='#ecf0f1')
+        self.lang_menu = tk.Menu(self.lang_menu_btn, tearoff=0, bg='#34495e', fg='white', activebackground='#2c3e50', activeforeground='white')
+        self.lang_menu.add_command(label='Tiếng Việt', command=lambda: self.switch_language('Tiếng Việt'))
+        self.lang_menu.add_command(label='English', command=lambda: self.switch_language('English'))
+        self.lang_menu_btn.config(menu=self.lang_menu)
+        self.lang_menu_btn.pack(side='right', padx=10)
+
+        # Shutdown Timer Frame
+        shutdown_frame = ttk.LabelFrame(content_frame, padding=(10, 5)); shutdown_frame.pack(fill='x', pady=(10, 0), padx=10)
+        self.shutdown_frame = shutdown_frame
+
+        # Top row: status text (full width)
+        sf_top = tk.Frame(shutdown_frame); sf_top.pack(fill='x')
+        self.shutdown_status_label = tk.Label(sf_top, font=('Arial', 9, 'italic'), anchor='w', justify='left', wraplength=420); self.shutdown_status_label.pack(fill='x', padx=2, pady=(0, 6))
+
+        # Middle row: input controls
+        sf_mid = tk.Frame(shutdown_frame); sf_mid.pack(fill='x')
+        self.shutdown_time_label = tk.Label(sf_mid, font=('Arial', 10)); self.shutdown_time_label.pack(side='left', padx=(0, 5))
+        self.shutdown_entry = ttk.Entry(sf_mid, width=8, font=('Arial', 10)); self.shutdown_entry.pack(side='left', padx=5)
+        self.shutdown_unit_var = tk.StringVar()
+        self.shutdown_unit_menu = tk.OptionMenu(sf_mid, self.shutdown_unit_var, ""); self.shutdown_unit_menu.pack(side='left', padx=5)
+
+        # Bottom row: action buttons
+        sf_bottom = tk.Frame(shutdown_frame); sf_bottom.pack(fill='x', pady=(6, 0))
+        btn_style_small = {'font':('Arial', 8), 'fg':'white', 'width': 10}
+        self.shutdown_set_btn = tk.Button(sf_bottom, bg='#3498db', command=self.set_shutdown, **btn_style_small); self.shutdown_set_btn.pack(side='left', padx=5)
+        self.shutdown_cancel_btn = tk.Button(sf_bottom, bg='#e74c3c', command=self.cancel_shutdown, **btn_style_small); self.shutdown_cancel_btn.pack(side='left', padx=5)
+
+    def update_ui_language(self):
+        lang = LANGUAGES[self.current_lang]
+        self.root.title(lang['app_title'])
+        self.title_label.config(text=lang['app_title'])
+        self.version_label.config(text=lang['app_version'])
+        self.win_setup_btn.config(text=lang['win_setup_btn'])
+        self.net_setup_btn.config(text=lang['net_setup_btn'])
+        self.bloat_remove_btn.config(text=lang['bloat_remove_btn'])
+        self.wifi_backup_btn.config(text=lang['wifi_backup_btn'])
+        self.driver_backup_btn.config(text=lang['driver_backup_btn'])
+        self.status_var.set(lang['status_ready'])
+        if self.net_win and self.net_win.winfo_exists(): self._update_network_window_lang()
+        if self.bloat_win and self.bloat_win.winfo_exists(): self._update_bloatware_window_lang()
+        if self.win_setup_win and self.win_setup_win.winfo_exists(): self._update_win_setup_window_lang()
+        
+        self.shutdown_frame.config(text=lang['shutdown_timer_frame'])
+        self.shutdown_time_label.config(text=lang['shutdown_time_label'])
+        self.shutdown_set_btn.config(text=lang['shutdown_set_btn'])
+        self.shutdown_cancel_btn.config(text=lang['shutdown_cancel_btn'])
+        self.shutdown_status_label.config(text=lang['shutdown_status_none'])
+        
+        menu = self.shutdown_unit_menu['menu']
+        menu.delete(0, 'end')
+        menu.add_command(label=lang['shutdown_unit_minutes'], command=tk._setit(self.shutdown_unit_var, lang['shutdown_unit_minutes']))
+        menu.add_command(label=lang['shutdown_unit_hours'], command=tk._setit(self.shutdown_unit_var, lang['shutdown_unit_hours']))
+        self.shutdown_unit_var.set(lang['shutdown_unit_minutes'])
+
+    def switch_language(self, lang_name):
+        self.current_lang = 'vi' if lang_name == 'Tiếng Việt' else 'en'
+        self.update_ui_language()
+
+    def _show_message(self, title_key, message_key, msg_type='info', parent=None, **kwargs):
+        lang = LANGUAGES[self.current_lang]
+        title = lang.get(title_key, title_key)
+        message = lang.get(message_key, "???").format(**kwargs) if kwargs else lang.get(message_key, message_key)
+        parent_win = parent if parent and parent.winfo_exists() else self.root
+        
+        if msg_type == 'info': messagebox.showinfo(title, message, parent=parent_win)
+        elif msg_type == 'warning': messagebox.showwarning(title, message, parent=parent_win)
+        elif msg_type == 'error': messagebox.showerror(title, message, parent=parent_win)
+        elif msg_type == 'confirm': return messagebox.askyesno(title, message, parent=parent_win)
 
     def run_in_thread(self, target_func, *args):
-        thread = threading.Thread(target=target_func, args=args, daemon=True)
-        thread.start()
+        threading.Thread(target=target_func, args=args, daemon=True).start()
 
-    def run_command(self, command, shell=True, check=False):
+    def run_command(self, command, **kwargs):
         try:
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            result = subprocess.run(
-                command, shell=shell, capture_output=True, text=True,
-                check=check, encoding='utf-8', errors='ignore', startupinfo=startupinfo
-            )
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False, encoding='utf-8', errors='ignore', startupinfo=startupinfo, **kwargs)
             return result.stdout + result.stderr
-        except subprocess.CalledProcessError as e:
-            return f"Lệnh thất bại với mã lỗi {e.returncode}:\n{e.stdout}\n{e.stderr}"
-        except Exception as e:
-            return f"Lỗi thực thi lệnh: {str(e)}"
+        except Exception as e: return f"Execution error: {e}"
 
-    def update_status(self, message):
-        self.status_var.set(message)
+    def update_status(self, key, **kwargs):
+        lang = LANGUAGES[self.current_lang]
+        self.status_var.set(lang.get(key, key).format(**kwargs))
         self.root.update()
         
-    def windows_setup(self): messagebox.showinfo("Thông báo", "Chức năng đang được phát triển.")
-    def remove_bloatware(self): messagebox.showinfo("Thông báo", "Chức năng đang được phát triển.")
-    def backup_drivers(self): messagebox.showinfo("Thông báo", "Chức năng đang được phát triển.")
+    def _center_window(self, win, width=None, height=None):
+        win.update_idletasks()
+        if width is None or height is None:
+            width = win.winfo_width()
+            height = win.winfo_height()
+            if width <= 1 or height <= 1:
+                width = win.winfo_reqwidth()
+                height = win.winfo_reqheight()
+        x = (win.winfo_screenwidth() // 2) - (width // 2)
+        y = (win.winfo_screenheight() // 2) - (height // 2)
+        win.geometry(f"{width}x{height}+{x}+{y}")
+
+    def windows_setup(self):
+        self.open_win_setup_window()
+
+    def open_win_setup_window(self):
+        if self.win_setup_win and self.win_setup_win.winfo_exists():
+            self.win_setup_win.focus()
+            return
+        
+        self.win_setup_win = tk.Toplevel(self.root)
+        self.win_setup_win.geometry("500x300")
+        self.win_setup_win.resizable(False, False)
+        self.win_setup_win.transient(self.root)
+        self.win_setup_win.grab_set()
+
+        try:
+            self.win_setup_win.iconbitmap(resource_path("icon.ico"))
+        except Exception:
+            try:
+                icon_png = resource_path("icon.png")
+                if os.path.exists(icon_png):
+                    self.win_setup_win.iconphoto(True, tk.PhotoImage(file=icon_png))
+            except Exception:
+                pass
+
+        h_frame = tk.Frame(self.win_setup_win, bg='#3498db', height=60)
+        h_frame.pack(fill='x')
+        h_frame.pack_propagate(False)
+        self.win_setup_title_lbl = tk.Label(h_frame, font=('Arial', 16, 'bold'), fg='white', bg='#3498db')
+        self.win_setup_title_lbl.pack(pady=(5,0))
+        self.win_setup_subtitle_lbl = tk.Label(h_frame, font=('Arial', 10), fg='#ecf0f1', bg='#3498db')
+        self.win_setup_subtitle_lbl.pack()
+
+        content_frame = tk.Frame(self.win_setup_win, bg='#f0f0f0')
+        content_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        self.win_setup_stable_btn = tk.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/win"), font=('Arial', 11, 'bold'), height=2)
+        self.win_setup_stable_btn.pack(fill='x', pady=5)
+
+        self.win_setup_dev_btn = tk.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/windev"), font=('Arial', 11, 'bold'), height=2)
+        self.win_setup_dev_btn.pack(fill='x', pady=5)
+        
+        self.win_setup_info_lbl = tk.Label(content_frame, font=('Arial', 9, 'italic'), bg='#f0f0f0', wraplength=450, justify='center')
+        self.win_setup_info_lbl.pack(pady=(15, 0))
+
+        self._update_win_setup_window_lang()
+        self._center_window(self.win_setup_win, 500, 300)
+
+    def _update_win_setup_window_lang(self):
+        lang = LANGUAGES[self.current_lang]
+        self.win_setup_win.title(lang['win_setup_win_title'])
+        self.win_setup_title_lbl.config(text=lang['win_setup_win_title'])
+        self.win_setup_subtitle_lbl.config(text=lang['win_setup_header_subtitle'])
+        self.win_setup_stable_btn.config(text=lang['win_setup_stable_btn'])
+        self.win_setup_dev_btn.config(text=lang['win_setup_dev_btn'])
+        self.win_setup_info_lbl.config(text=lang['win_setup_info'])
+
+    def _run_win_script(self, url):
+        self.update_status('status_running_win_script')
+        command = f"start powershell -NoExit -Command \"irm '{url}' | iex\""
+        try:
+            os.system(command)
+        except Exception as e:
+            title = LANGUAGES[self.current_lang]['title_error']
+            messagebox.showerror(title, f"Failed to launch script: {e}", parent=self.win_setup_win)
+        
+        self.update_status('status_ready')
+
+    def backup_drivers(self):
+        self._show_message('title_info', 'status_dev')
+
+    def open_bloatware_window(self):
+        if self.bloat_win and self.bloat_win.winfo_exists(): self.bloat_win.focus(); return
+        self.bloat_win = tk.Toplevel(self.root)
+        self.bloat_win.geometry("900x600")
+        self.bloat_win.resizable(True, True)
+        self.bloat_win.transient(self.root)
+        self.bloat_win.grab_set()
+        try:
+            self.bloat_win.iconbitmap(resource_path("icon.ico"))
+        except Exception:
+            try:
+                icon_png = resource_path("icon.png")
+                if os.path.exists(icon_png):
+                    self.bloat_win.iconphoto(True, tk.PhotoImage(file=icon_png))
+            except Exception:
+                pass
+
+        h_frame = tk.Frame(self.bloat_win, bg='#e74c3c', height=60); h_frame.pack(fill='x'); h_frame.pack_propagate(False)
+        self.bloat_title_lbl = tk.Label(h_frame, font=('Arial', 16, 'bold'), fg='white', bg='#e74c3c'); self.bloat_title_lbl.pack(pady=(15, 5))
+        self.bloat_subtitle_lbl = tk.Label(h_frame, font=('Arial', 10), fg='#ecf0f1', bg='#e74c3c'); self.bloat_subtitle_lbl.pack()
+
+        # Content frame
+        content_frame = tk.Frame(self.bloat_win, bg='#f0f0f0')
+        content_frame.pack(fill='both', expand=True, padx=20, pady=20)
+
+        # Buttons frame (ĐƯA LÊN TRƯỚC VÀ PACK VỀ PHÍA DƯỚI)
+        button_frame = tk.Frame(content_frame, bg='#f0f0f0')
+        button_frame.pack(side='bottom', fill='x', pady=(10, 0))
+        
+        # Danh sách bloatware (Bây giờ sẽ chiếm không gian còn lại)
+        list_frame = tk.Frame(content_frame, bg='#f0f0f0')
+        list_frame.pack(fill='both', expand=True)
+
+        self.bloat_list_lbl = tk.Label(list_frame, font=('Arial', 12, 'bold'), bg='#f0f0f0')
+        self.bloat_list_lbl.pack(anchor='w', pady=(0, 10))
+        
+        cols = ('Select', 'App Name', 'Package Name', 'Version', 'Location')
+        self.bloat_tree = ttk.Treeview(list_frame, columns=cols, show='headings', height=15)
+        style = ttk.Style(self.bloat_win)
+        style.configure("Custom.Treeview", font=('Segoe UI', 10), rowheight=28)
+        style.configure("Custom.Treeview.Heading", font=('Segoe UI', 10, 'bold'))
+        self.bloat_tree.configure(style="Custom.Treeview")
+        
+        self.bloat_tree.column('Select', width=60, anchor='center')
+        self.bloat_tree.column('App Name', width=250, anchor='w')
+        self.bloat_tree.column('Package Name', width=200, anchor='w')
+        self.bloat_tree.column('Version', width=100, anchor='center')
+        self.bloat_tree.column('Location', width=200, anchor='w')
+        
+        scroll = ttk.Scrollbar(list_frame, orient='vertical', command=self.bloat_tree.yview)
+        self.bloat_tree.configure(yscrollcommand=scroll.set)
+        
+        self.bloat_tree.pack(side='left', fill='both', expand=True)
+        scroll.pack(side='right', fill='y')
+        
+        btn_style_small = {'font': ('Arial', 11, 'bold'), 'width': 15, 'height': 2}
+        self.bloat_load_btn = tk.Button(button_frame, bg='#3498db', fg='white', command=self.load_bloatware_list, **btn_style_small)
+        self.bloat_load_btn.pack(side='left', padx=(0, 10))
+        self.bloat_select_all_btn = tk.Button(button_frame, bg='#27ae60', fg='white', command=self.select_all_bloatware, **btn_style_small)
+        self.bloat_select_all_btn.pack(side='left', padx=(0, 10))
+        self.bloat_deselect_all_btn = tk.Button(button_frame, bg='#95a5a6', fg='white', command=self.deselect_all_bloatware, **btn_style_small)
+        self.bloat_deselect_all_btn.pack(side='left', padx=(0, 10))
+        self.bloat_remove_btn = tk.Button(button_frame, bg='#e74c3c', fg='white', command=self.remove_selected_bloatware, **btn_style_small)
+        self.bloat_remove_btn.pack(side='right', padx=(10, 0))
+        
+        s_frame = tk.Frame(self.bloat_win, bg='#34495e', height=30)
+        s_frame.pack(fill='x', side='bottom')
+        s_frame.pack_propagate(False)
+        self.bloat_status_var = tk.StringVar()
+        tk.Label(s_frame, textvariable=self.bloat_status_var, font=('Arial', 9), fg='white', bg='#34495e').pack(side='left', padx=10, pady=5)
+        
+        self.bloat_tree.bind('<Button-1>', self.toggle_bloatware_selection)
+        
+        self._update_bloatware_window_lang()
+        self.bloat_win.after(100, lambda: self.run_in_thread(self.load_bloatware_list))
+        self._center_window(self.bloat_win, 900, 600)
+
+    def _update_bloatware_window_lang(self):
+        lang = LANGUAGES[self.current_lang]
+        self.bloat_win.title(lang['bloat_win_title'])
+        self.bloat_title_lbl.config(text=lang['bloat_win_title'])
+        self.bloat_subtitle_lbl.config(text=lang['bloat_header_subtitle'])
+        self.bloat_list_lbl.config(text=lang['bloat_list_label'])
+        self.bloat_tree.heading('Select', text=lang['bloat_col_select']); self.bloat_tree.heading('App Name', text=lang['bloat_col_app_name'])
+        self.bloat_tree.heading('Package Name', text=lang['bloat_col_package_name']); self.bloat_tree.heading('Version', text=lang['bloat_col_version']); self.bloat_tree.heading('Location', text=lang['bloat_col_location'])
+        self.bloat_load_btn.config(text=lang['bloat_load_btn']); self.bloat_select_all_btn.config(text=lang['bloat_select_all_btn'])
+        self.bloat_deselect_all_btn.config(text=lang['bloat_deselect_all_btn']); self.bloat_remove_btn.config(text=lang['bloat_remove_selected_btn'])
+        self.bloat_status_var.set(lang['status_ready'])
+
+    def load_bloatware_list(self):
+        self.update_status('status_loading_bloatware'); self.bloat_win.update()
+        for i in self.bloat_tree.get_children(): self.bloat_tree.delete(i)
+        try:
+            cmd = 'Get-AppxPackage | Where-Object {$_.NonRemovable -eq $false} | Select-Object Name,PackageFullName,Version,InstallLocation | Sort-Object Name | Format-List'
+            result = self.run_command(f'powershell -Command "{cmd}"')
+            if not result or "Error" in result: raise Exception(result)
+            app_count = 0
+            for block in result.strip().split('\n\n'):
+                props = {k.strip(): v.strip() for k, v in (l.split(':', 1) for l in block.split('\n') if ':' in l)}
+                if all(k in props for k in ['Name', 'PackageFullName', 'Version']):
+                    self.bloat_tree.insert('', 'end', values=('☐', props['Name'], props['PackageFullName'], props['Version'], props.get('InstallLocation', 'N/A')))
+                    app_count += 1
+            self.update_status('status_ready')
+        except Exception as e: self._show_message('title_error', 'msg_bloat_load_fail', msg_type='error', parent=self.bloat_win, e=str(e))
+    def toggle_bloatware_selection(self, event):
+        item_id = self.bloat_tree.identify_row(event.y)
+        if not item_id: return
+        if self.bloat_tree.identify_column(event.x) == '#1':
+            current_values = self.bloat_tree.item(item_id, 'values'); new_symbol = '☑' if current_values[0] == '☐' else '☐'
+            new_values = (new_symbol,) + current_values[1:]; self.bloat_tree.item(item_id, values=new_values)
+    def select_all_bloatware(self, select=True):
+        for item in self.bloat_tree.get_children():
+            vals = self.bloat_tree.item(item, 'values'); new_vals = ('☑' if select else '☐',) + vals[1:]
+            self.bloat_tree.item(item, values=new_vals)
+    def deselect_all_bloatware(self): self.select_all_bloatware(select=False)
+    def remove_selected_bloatware(self):
+        items = [(self.bloat_tree.item(i, 'values')[2], self.bloat_tree.item(i, 'values')[1], i) for i in self.bloat_tree.get_children() if self.bloat_tree.item(i, 'values')[0] == '☑']
+        if not items: self._show_message('title_warning', 'msg_bloat_no_app_selected', msg_type='warning', parent=self.bloat_win); return
+        app_list = '\n'.join([f'• {name}' for _, name, _ in items])
+        if self._show_message('title_confirm', 'msg_confirm_bloat_remove', msg_type='confirm', parent=self.bloat_win, count=len(items), app_list=app_list):
+            self.run_in_thread(self._remove_bloatware_task, items)
+    def _remove_bloatware_task(self, items):
+        s_count = 0; failed = []
+        for i, (pkg, name, item_id) in enumerate(items, 1):
+            self.update_status('status_removing_bloatware', i=i, total=len(items), name=name)
+            try:
+                cmd = f'Remove-AppxPackage -Package "{pkg}" -AllUsers'; result = self.run_command(f'powershell -Command "{cmd}"')
+                if "Error" in result: raise Exception(result)
+                self.bloat_tree.delete(item_id); s_count += 1
+            except Exception as e: failed.append(f'• {name}: {e}')
+        msg_val = '\n'.join(failed) if failed else ""
+        self._show_message('title_info', f'Removed: {s_count}/{len(items)}\n\n{msg_val}', parent=self.bloat_win)
+        self.update_status('status_ready')
 
     def open_network_window(self):
-        """Mở cửa sổ quản lý và thiết lập mạng."""
-        self.net_win = tk.Toplevel(self.root)
-        self.net_win.title("Thiết lập mạng")
-        self.net_win.geometry("980x500") # Mở rộng cửa sổ
-
-        self.net_win.update_idletasks()
-        width = self.net_win.winfo_width()
-        height = self.net_win.winfo_height()
-        x = (self.net_win.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.net_win.winfo_screenheight() // 2) - (height // 2)
-        self.net_win.geometry(f'{width}x{height}+{x}+{y}')
-        
+        if self.net_win and self.net_win.winfo_exists(): self.net_win.focus(); return
+        self.net_win = tk.Toplevel(self.root); self.net_win.geometry("980x500")
+        self.net_win.transient(self.root); self.net_win.grab_set()
         try:
-            icon_path = resource_path("icon.ico")
-            self.net_win.iconbitmap(icon_path)
-        except Exception as e:
-            print(f"Không thể tải icon cho cửa sổ mạng: {e}")
-            pass
-
-        self.net_win.transient(self.root)
-        self.net_win.grab_set()
-
-        info_frame = ttk.LabelFrame(self.net_win, text="Thông tin Card mạng", padding=(10, 10))
-        info_frame.pack(fill='x', padx=10, pady=10)
-
-        cols = ("Tên", "Loại", "Địa chỉ IP", "Địa chỉ MAC", "DNS Servers")
-        self.net_tree = ttk.Treeview(info_frame, columns=cols, show='headings', height=8)
-        
-        for col in cols:
-            self.net_tree.heading(col, text=col)
-            width = 180 if col == "DNS Servers" else 150
-            self.net_tree.column(col, width=width, anchor='w')
-        
-        self.net_tree.pack(fill='x', expand=True)
-        
-        refresh_button = tk.Button(info_frame, text="🔃 Tải lại danh sách", command=lambda: self.run_in_thread(self.refresh_network_info))
-        refresh_button.pack(pady=5)
-        
-        self.run_in_thread(self.refresh_network_info)
-
-        action_frame = ttk.LabelFrame(self.net_win, text="Chức năng", padding=(10, 10))
-        action_frame.pack(fill='x', padx=10, pady=10)
-
-        row1 = tk.Frame(action_frame)
-        row1.pack(fill='x', pady=5)
-        tk.Button(row1, text="Xóa Cache DNS", command=self.flush_dns).pack(side='left', padx=5)
-        tk.Button(row1, text="Reset TCP/IP", command=self.reset_tcp_ip).pack(side='left', padx=5)
-        tk.Button(row1, text="Khôi phục WiFi từ Backup", command=self.restore_wifi).pack(side='left', padx=5)
-
-        dns_frame = ttk.LabelFrame(action_frame, text="Đổi DNS nhanh (cho card mạng đã chọn)", padding=(10, 5))
-        dns_frame.pack(fill='x', pady=10)
-        tk.Button(dns_frame, text="Google DNS", command=lambda: self.change_dns("8.8.8.8", "8.8.4.4")).pack(side='left', padx=5)
-        tk.Button(dns_frame, text="Cloudflare DNS", command=lambda: self.change_dns("1.1.1.1", "1.0.0.1")).pack(side='left', padx=5)
-        tk.Button(dns_frame, text="Xóa DNS (Tự động)", command=lambda: self.change_dns()).pack(side='left', padx=5)
-
-    def _get_dns_servers(self, interface_name):
-        """Lấy danh sách DNS server cho một card mạng cụ thể."""
-        try:
-            result = self.run_command(f'netsh interface ipv4 show dnsservers name="{interface_name}"')
-            if "none" in result.lower():
-                 return "Tự động (DHCP)"
-            
-            # Sử dụng regex để tìm tất cả các địa chỉ IP
-            dns_servers = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', result)
-            return ", ".join(dns_servers) if dns_servers else "Không có"
+            self.net_win.iconbitmap(resource_path("icon.ico"))
         except Exception:
-            return "Không thể lấy"
+            try:
+                icon_png = resource_path("icon.png")
+                if os.path.exists(icon_png):
+                    self.net_win.iconphoto(True, tk.PhotoImage(file=icon_png))
+            except Exception:
+                pass
+        
+        info_frame = ttk.LabelFrame(self.net_win, padding=(10, 10)); info_frame.pack(fill='x', padx=10, pady=10)
+        cols = ('Name', 'Type', 'IP', 'MAC', 'DNS'); self.net_tree = ttk.Treeview(info_frame, columns=cols, show='headings', height=8)
+        self.net_tree.column('Name', width=150, anchor='w'); self.net_tree.column('Type', width=80, anchor='w'); self.net_tree.column('IP', width=120, anchor='w'); self.net_tree.column('MAC', width=150, anchor='w'); self.net_tree.column('DNS', width=250, anchor='w')
+        self.net_tree.pack(fill='x', expand=True)
+        self.net_refresh_btn = tk.Button(info_frame, command=lambda: self.run_in_thread(self.refresh_network_info)); self.net_refresh_btn.pack(pady=5)
+        
+        actions_frame = ttk.LabelFrame(self.net_win, padding=(10, 10)); actions_frame.pack(fill='x', padx=10, pady=10)
+        r1 = tk.Frame(actions_frame); r1.pack(fill='x', pady=5)
+        self.net_flush_dns_btn = tk.Button(r1, command=self.flush_dns); self.net_flush_dns_btn.pack(side='left', padx=5)
+        self.net_reset_tcp_btn = tk.Button(r1, command=self.reset_tcp_ip); self.net_reset_tcp_btn.pack(side='left', padx=5)
+        self.net_restore_wifi_btn = tk.Button(r1, command=self.restore_wifi); self.net_restore_wifi_btn.pack(side='left', padx=5)
+        
+        dns_frame = ttk.LabelFrame(actions_frame, padding=(10, 5)); dns_frame.pack(fill='x', pady=10)
+        self.net_google_dns_btn = tk.Button(dns_frame, text="Google DNS", command=lambda: self.change_dns("8.8.8.8", "8.8.4.4")); self.net_google_dns_btn.pack(side='left', padx=5)
+        self.net_cf_dns_btn = tk.Button(dns_frame, text="Cloudflare DNS", command=lambda: self.change_dns("1.1.1.1", "1.0.0.1")); self.net_cf_dns_btn.pack(side='left', padx=5)
+        self.net_clear_dns_btn = tk.Button(dns_frame, command=lambda: self.change_dns()); self.net_clear_dns_btn.pack(side='left', padx=5)
+        
+        self._update_network_window_lang(); self.run_in_thread(self.refresh_network_info)
+        self._center_window(self.net_win, 980, 500)
 
-    def refresh_network_info(self):
-        self.update_status("Đang làm mới thông tin mạng...")
+    def _update_network_window_lang(self):
+        lang = LANGUAGES[self.current_lang]
+        self.net_win.title(lang['net_win_title'])
+        self.net_win.winfo_children()[0].config(text=lang['net_info_frame'])
+        self.net_win.winfo_children()[1].config(text=lang['net_actions_frame'])
+        self.net_win.winfo_children()[1].winfo_children()[1].config(text=lang['net_dns_frame'])
+
+        self.net_tree.heading('Name', text=lang['net_col_name']); self.net_tree.heading('Type', text=lang['net_col_type']); self.net_tree.heading('IP', text=lang['net_col_ip'])
+        self.net_tree.heading('MAC', text=lang['net_col_mac']); self.net_tree.heading('DNS', text=lang['net_col_dns'])
+        self.net_refresh_btn.config(text=lang['net_refresh_btn'])
+        self.net_flush_dns_btn.config(text=lang['net_flush_dns_btn'])
+        self.net_reset_tcp_btn.config(text=lang['net_reset_tcp_btn'])
+        self.net_restore_wifi_btn.config(text=lang['net_restore_wifi_btn'])
+        self.net_google_dns_btn.config(text=lang['net_google_dns'])
+        self.net_cf_dns_btn.config(text=lang['net_cloudflare_dns'])
+        self.net_clear_dns_btn.config(text=lang['net_clear_dns_btn'])
+
+    def _get_dns_servers(self, iface_name):
         try:
-            # Xóa các mục cũ
-            for item in self.net_tree.get_children():
-                self.net_tree.delete(item)
-            
-            # Lấy thông tin cơ bản
-            addrs = psutil.net_if_addrs()
-            stats = psutil.net_if_stats()
-            
-            # Duyệt qua từng card mạng
+            result = self.run_command(f'netsh interface ipv4 show dnsservers name="{iface_name}"')
+            if "none" in result.lower(): return "Automatic (DHCP)"
+            servers = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', result)
+            return ", ".join(servers) if servers else "None"
+        except: return "Cannot fetch"
+    def refresh_network_info(self):
+        self.update_status('status_loading_net')
+        try:
+            for i in self.net_tree.get_children(): self.net_tree.delete(i)
+            addrs = psutil.net_if_addrs(); stats = psutil.net_if_stats()
             for intf, addr_list in addrs.items():
-                ip = mac = ""
-                intf_type = "Up" if stats.get(intf) and stats[intf].isup else "Down"
+                ip = mac = ""; is_up = "Up" if stats.get(intf) and stats[intf].isup else "Down"
                 for addr in addr_list:
                     if addr.family == psutil.AF_LINK: mac = addr.address
                     if addr.family == 2: ip = addr.address
-                
-                # Lấy thông tin DNS
                 dns = self._get_dns_servers(intf)
-                
-                # Thêm vào bảng
-                self.net_tree.insert("", "end", values=(intf, intf_type, ip, mac, dns))
-
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể lấy thông tin mạng: {e}", parent=self.net_win)
-        finally:
-            self.update_status("Sẵn sàng.")
-
+                self.net_tree.insert("", "end", values=(intf, is_up, ip, mac, dns))
+        except Exception as e: self._show_message('title_error', 'msg_net_fetch_fail', msg_type='error', parent=self.net_win, e=str(e))
+        finally: self.update_status('status_ready')
     def _has_wireless_interface(self):
-        """Kiểm tra xem hệ thống có card mạng không dây (WiFi) hay không."""
         try:
             result = self.run_command("netsh wlan show interfaces")
-            if "There is no wireless interface on the system" in result or "Không có giao diện không dây nào trên hệ thống" in result:
-                return False
-            return True
-        except Exception:
-            return False
-
+            return not ("no wireless interface" in result or "không có giao diện" in result)
+        except: return False
     def _ensure_wlansvc_running(self):
-        """Kiểm tra và khởi động dịch vụ WLAN AutoConfig nếu cần."""
         try:
-            service = psutil.win_service_get('wlansvc')
-            if service.status() == 'running':
-                return True
+            svc = psutil.win_service_get('wlansvc')
+            if svc.status() == 'running': return True
         except psutil.NoSuchProcess:
-            messagebox.showerror("Lỗi", "Không tìm thấy dịch vụ WLAN AutoConfig (wlansvc).", parent=self.net_win if hasattr(self, 'net_win') else self.root)
-            return False
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi không xác định khi kiểm tra dịch vụ WLAN: {e}", parent=self.net_win if hasattr(self, 'net_win') else self.root)
-            return False
-
-        self.update_status("Dịch vụ WLAN chưa chạy, đang khởi động...")
-        result = self.run_command("net start wlansvc", check=True)
-        time.sleep(2) 
-        
+            self._show_message('title_error', 'msg_wlan_not_found', msg_type='error'); return False
+        self.update_status('status_starting_wlan'); self.run_command("net start wlansvc"); time.sleep(2)
         try:
-            service.refresh()
-            if service.status() == 'running':
-                self.update_status("Dịch vụ WLAN đã được khởi động.")
-                return True
-            else:
-                messagebox.showerror("Lỗi", f"Không thể khởi động dịch vụ WLAN AutoConfig.\nKết quả:\n{result}", parent=self.net_win if hasattr(self, 'net_win') else self.root)
-                return False
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi sau khi cố khởi động dịch vụ WLAN: {e}", parent=self.net_win if hasattr(self, 'net_win') else self.root)
-            return False
-
+            svc = psutil.win_service_get('wlansvc')
+            if svc.status() == 'running': return True
+        except psutil.NoSuchProcess:
+            pass
+        self._show_message('title_error', 'msg_wlan_cannot_start', msg_type='error'); return False
     def restore_wifi(self):
-        if not self._has_wireless_interface():
-            messagebox.showwarning("Không tìm thấy Card WiFi", "Không tìm thấy card mạng WiFi trên hệ thống.\n\nChức năng này không thể hoạt động.\n\n(Lưu ý: Nếu bạn đang dùng máy ảo, bạn cần kết nối một USB WiFi vào máy ảo để sử dụng tính năng này).")
-            return
-
-        files = filedialog.askopenfilenames(
-            title="Chọn các file backup WiFi (.xml)",
-            filetypes=[("XML files", "*.xml"), ("All files", "*.*")],
-            parent=self.net_win
-        )
-        if not files:
-            self.update_status("Đã hủy khôi phục WiFi.")
-            return
-        self.run_in_thread(self._restore_wifi_task, files)
-
+        if not self._has_wireless_interface(): self._show_message('title_warning', 'msg_wifi_no_card', msg_type='warning'); return
+        files = filedialog.askopenfilenames(title=LANGUAGES[self.current_lang]['title_wifi_restore'], filetypes=[("XML files", "*.xml"), ("All files", "*.*")], parent=self.net_win)
+        if files: self.run_in_thread(self._restore_wifi_task, files)
     def _restore_wifi_task(self, files):
-        """Tác vụ khôi phục WiFi, sử dụng 'user=all' để tăng tương thích."""
-        if not self._ensure_wlansvc_running():
-            self.update_status("Sẵn sàng.")
-            return
-
-        success_count = 0
-        total_files = len(files)
-        
-        for i, file_path in enumerate(files, 1):
-            self.update_status(f"Đang khôi phục {i}/{total_files}...")
-            command = f'netsh wlan add profile filename="{file_path}" user=all'
-            result = self.run_command(command)
-            
-            if "is added on interface" in result.lower() or "được thêm trên giao diện" in result.lower():
-                success_count += 1
-        
-        messagebox.showinfo(
-            "Hoàn thành",
-            f"Đã khôi phục thành công {success_count}/{total_files} profile WiFi.",
-            parent=self.net_win
-        )
-        self.update_status("Sẵn sàng.")
-
+        if not self._ensure_wlansvc_running(): self.update_status('status_ready'); return
+        s_count = 0
+        for i, f in enumerate(files, 1):
+            self.update_status('status_restoring_wifi', i=i, total=len(files))
+            result = self.run_command(f'netsh wlan add profile filename="{f}" user=all')
+            if "is added on interface" in result.lower() or "được thêm trên giao diện" in result.lower(): s_count += 1
+        self._show_message('title_info', 'msg_wifi_restore_complete', s=s_count, t=len(files), parent=self.net_win)
+        self.update_status('status_ready')
     def flush_dns(self):
-        self.update_status("Đang xóa cache DNS...")
-        self.run_in_thread(self._flush_dns_task)
-
+        self.update_status('status_flushing_dns'); self.run_in_thread(self._flush_dns_task)
     def _flush_dns_task(self):
         result = self.run_command("ipconfig /flushdns")
-        if "successfully flushed the dns resolver cache" in result.lower() or "đã xóa thành công bộ đệm của trình phân giải dns" in result.lower():
-            messagebox.showinfo("Hoàn thành", f"Đã xóa cache DNS thành công.\n\nKết quả:\n{result.strip()}", parent=self.net_win)
-        else:
-            messagebox.showerror("Lỗi", f"Xóa cache DNS thất bại.\n\nKết quả:\n{result.strip()}", parent=self.net_win)
-        self.update_status("Sẵn sàng.")
-
+        if "successfully flushed" in result.lower() or "đã xóa thành công" in result.lower(): self._show_message('title_info', 'msg_dns_flush_success', parent=self.net_win)
+        else: self._show_message('title_error', 'msg_dns_flush_fail', msg_type='error', parent=self.net_win)
+        self.update_status('status_ready')
     def reset_tcp_ip(self):
-        self.update_status("Đang reset TCP/IP...")
-        self.run_in_thread(self._reset_tcp_ip_task)
-
+        self.update_status('status_resettiing_tcp'); self.run_in_thread(self._reset_tcp_ip_task)
     def _reset_tcp_ip_task(self):
         result = self.run_command("netsh int ip reset")
-        if "resetting" in result.lower() and "ok" in result.lower():
-             messagebox.showinfo("Hoàn thành", f"Reset TCP/IP thành công. Vui lòng khởi động lại máy tính để hoàn tất.\n\nKết quả:\n{result.strip()}", parent=self.net_win)
-        else:
-            messagebox.showerror("Lỗi", f"Reset TCP/IP thất bại.\n\nKết quả:\n{result.strip()}", parent=self.net_win)
-        self.update_status("Sẵn sàng.")
-
+        if "resetting" in result.lower() and "ok" in result.lower(): self._show_message('title_info', 'msg_reset_tcp_success', parent=self.net_win)
+        else: self._show_message('title_error', 'msg_reset_tcp_fail', msg_type='error', parent=self.net_win)
+        self.update_status('status_ready')
     def change_dns(self, dns1=None, dns2=None):
-        selected_item = self.net_tree.focus()
-        if not selected_item:
-            messagebox.showwarning("Chưa chọn", "Vui lòng chọn một card mạng từ danh sách.", parent=self.net_win)
-            return
-        
-        interface_name = self.net_tree.item(selected_item)['values'][0]
-        self.update_status(f"Đang đổi DNS cho '{interface_name}'...")
-        self.run_in_thread(self._change_dns_task, interface_name, dns1, dns2)
-
-    def _change_dns_task(self, interface_name, dns1, dns2):
-        if dns1 is None: # Xóa DNS
-            command = f'netsh interface ipv4 set dnsserver name="{interface_name}" source=dhcp'
-            result = self.run_command(command)
-            if "error" not in result.lower() and "lỗi" not in result.lower() and result.strip() == "":
-                 messagebox.showinfo("Hoàn thành", f"Đã xóa DNS cho '{interface_name}'. Card mạng sẽ nhận DNS tự động.", parent=self.net_win)
-            else:
-                 messagebox.showerror("Lỗi", f"Không thể xóa DNS.\n\nKết quả:\n{result.strip()}", parent=self.net_win)
-        else: # Set DNS
-            command1 = f'netsh interface ipv4 set dnsserver name="{interface_name}" static {dns1} primary'
-            command2 = f'netsh interface ipv4 add dnsserver name="{interface_name}" {dns2} index=2'
-            result1 = self.run_command(command1)
-            result2 = self.run_command(command2)
-            
-            if (result1.strip() == "" and result2.strip() == ""):
-                messagebox.showinfo("Hoàn thành", f"Đã đổi DNS cho '{interface_name}' thành công.", parent=self.net_win)
-            else:
-                full_result = f"Lệnh 1:\n{result1.strip()}\n\nLệnh 2:\n{result2.strip()}"
-                messagebox.showerror("Lỗi", f"Không thể đổi DNS.\n\nKết quả:\n{full_result}", parent=self.net_win)
-
-        self.update_status("Sẵn sàng.")
-
+        item = self.net_tree.focus()
+        if not item: self._show_message('title_warning', 'msg_net_no_iface_selected', msg_type='warning', parent=self.net_win); return
+        iface = self.net_tree.item(item)['values'][0]
+        self.update_status('status_changing_dns', iface=iface); self.run_in_thread(self._change_dns_task, iface, dns1, dns2)
+    def _change_dns_task(self, iface, dns1, dns2):
+        if dns1 is None: cmd = f'netsh interface ipv4 set dnsserver name="{iface}" source=dhcp'
+        else: cmd = f'netsh interface ipv4 set dnsserver name="{iface}" static {dns1} primary'
+        res1 = self.run_command(cmd)
+        if dns1 and dns2: self.run_command(f'netsh interface ipv4 add dnsserver name="{iface}" {dns2} index=2')
+        if not res1.strip(): self._show_message('title_info', 'msg_dns_change_success', parent=self.net_win, iface=iface)
+        else: self._show_message('title_error', 'msg_dns_change_fail', msg_type='error', parent=self.net_win, iface=iface)
+        self.run_in_thread(self.refresh_network_info); self.update_status('status_ready')
     def backup_wifi(self):
-        if not self._has_wireless_interface():
-            messagebox.showwarning("Không tìm thấy Card WiFi", "Không tìm thấy card mạng WiFi trên hệ thống.\n\nChức năng này không thể hoạt động.\n\n(Lưu ý: Nếu bạn đang dùng máy ảo, bạn cần kết nối một USB WiFi vào máy ảo để sử dụng tính năng này).")
-            return
-        self.update_status("Bắt đầu sao lưu WiFi...")
-        self.run_in_thread(self._backup_wifi_task)
-
+        if not self._has_wireless_interface(): self._show_message('title_warning', 'msg_wifi_no_card', msg_type='warning'); return
+        self.update_status('status_backing_up_wifi'); self.run_in_thread(self._backup_wifi_task)
     def _backup_wifi_task(self):
         if not self._ensure_wlansvc_running():
-            self.update_status("Sẵn sàng.")
+            self.update_status('status_ready')
             return
-            
-        log_messages = []
+        logs = []
         try:
-            log_messages.append("=== Bắt đầu sao lưu WiFi v4.1 ===\n")
-            self.update_status("Đang lấy danh sách WiFi...")
-            profiles_result = self.run_command("netsh wlan show profiles")
-            log_messages.append(f"Kết quả lệnh 'netsh wlan show profiles':\n{profiles_result}\n")
-            profiles = []
-            for line in profiles_result.split('\n'):
-                if "All User Profile" in line or "Hồ sơ Tất cả Người dùng" in line:
-                    try:
-                        profile_name = line.split(':', 1)[1].strip()
-                        if profile_name: profiles.append(profile_name)
-                    except IndexError: continue
-            log_messages.append(f"Đã phân tích. Tìm thấy {len(profiles)} profile.\n")
+            self.update_status('status_loading_wifi_profiles')
+            profiles_res = self.run_command("netsh wlan show profiles")
+            profiles = [
+                l.split(':', 1)[1].strip()
+                for l in profiles_res.split('\n')
+                if 'All User Profile' in l or 'Hồ sơ Tất cả Người dùng' in l
+            ]
             if not profiles:
-                messagebox.showwarning("Không tìm thấy", "Không có profile WiFi nào để sao lưu.")
-                self.update_status("Sẵn sàng.")
+                self._show_message('title_warning', 'msg_wifi_no_profile_to_backup', msg_type='warning')
                 return
-            backup_dir = filedialog.askdirectory(title="Chọn thư mục để lưu backup WiFi")
+            backup_dir = filedialog.askdirectory(
+                title=LANGUAGES[self.current_lang]['title_wifi_backup_dir']
+            )
             if not backup_dir:
-                self.update_status("Đã hủy sao lưu.")
                 return
-            backup_path = Path(backup_dir) / "WiFi_Backup"
-            backup_path.mkdir(exist_ok=True)
-            log_messages.append(f"Thư mục sao lưu: {backup_path}\n")
+            base_dir = Path(backup_dir)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_path = base_dir / f"WiFi_Backup_{timestamp}"
+            backup_path.mkdir(parents=True, exist_ok=True)
             wifi_data = []
-            success_count = 0
-            for i, profile in enumerate(profiles, 1):
-                self.update_status(f"Đang xử lý {i}/{len(profiles)}: {profile}")
+            s_count = 0
+            for i, p in enumerate(profiles, 1):
+                self.update_status('status_backing_up_wifi', i=i, total=len(profiles), profile=p)
                 try:
-                    self.run_command(f'netsh wlan export profile name="{profile}" folder="{backup_path}" key=clear')
-                    result_show = self.run_command(f'netsh wlan show profile name="{profile}" key=clear')
-                    password = "(Không có mật khẩu hoặc lỗi)"
-                    for res_line in result_show.split('\n'):
-                        if "Key Content" in res_line or "Nội dung Khóa" in res_line:
-                            password = res_line.split(':', 1)[1].strip()
+                    self.run_command(
+                        f'netsh wlan export profile name="{p}" folder="{backup_path}" key=clear'
+                    )
+                    res_show = self.run_command(
+                        f'netsh wlan show profile name="{p}" key=clear'
+                    )
+                    pwd = "N/A"
+                    for res_l in res_show.split('\n'):
+                        if "Key Content" in res_l or "Nội dung Khóa" in res_l:
+                            pwd = res_l.split(':', 1)[1].strip()
                             break
-                    wifi_data.append(f"usename: {profile}   : {password}")
-                    success_count += 1
-                    log_messages.append(f"Thành công: {profile}\n")
+                    wifi_data.append(f"SSID: {p} : {pwd}")
+                    s_count += 1
                 except Exception as e:
-                    log_messages.append(f"LỖI với profile '{profile}': {str(e)}\n")
-                    wifi_data.append(f"usename: {profile}   : (Lỗi: {str(e)})")
-                    continue
+                    logs.append(f"Error with profile '{p}': {e}")
             if wifi_data:
-                with open(backup_path / "WiFi_Passwords.txt", "w", encoding="utf-8") as f: f.write("\n".join(wifi_data))
-                log_messages.append("Ghi file .txt thành công.\n")
-            messagebox.showinfo("Hoàn thành", f"Đã xử lý xong. Thành công: {success_count}/{len(profiles)}.\nDữ liệu được lưu tại:\n{backup_path}")
+                with open(backup_path / "WiFi_Passwords.txt", "w", encoding="utf-8") as f:
+                    f.write("\n".join(wifi_data))
+            self._show_message(
+                'title_info', 'msg_wifi_backup_complete', s=s_count, t=len(profiles), path=backup_path, parent=self.root
+            )
             os.startfile(backup_path)
         except Exception as e:
             log_file = Path.home() / "windows_utility_tool_wifi_log.txt"
-            error_message = f"Lỗi nghiêm trọng: {str(e)}"
-            log_messages.append(f"\nLỖI NGHIÊM TRỌNG XẢY RA: {error_message}")
-            try:
-                with open(log_file, "w", encoding="utf-8") as log: log.write("\n".join(log_messages))
-                messagebox.showerror("Lỗi", f"{error_message}\n\nChi tiết lỗi đã được ghi tại:\n{log_file}")
-            except Exception as log_e: messagebox.showerror("Lỗi nghiêm trọng", f"Lỗi chính: {error_message}\n\nKhông thể ghi file log: {log_e}")
+            logs.append(f"Critical error: {e}")
+            with open(log_file, "w", encoding="utf-8") as log:
+                log.write("\n".join(logs))
+            title = LANGUAGES[self.current_lang]['title_error']
+            messagebox.showerror(title, f'A critical error occurred. See log file for details:\n{log_file}')
         finally:
-            self.update_status("Sẵn sàng.")
+            self.update_status('status_ready')
+
+    def set_shutdown(self):
+        """Hẹn giờ tắt máy theo khoảng thời gian và ép buộc đóng ứng dụng."""
+        try:
+            value = int(self.shutdown_entry.get())
+            unit_str = self.shutdown_unit_var.get()
+            lang = LANGUAGES[self.current_lang]
+            
+            if value <= 0:
+                raise ValueError("Value must be positive")
+
+            delay_seconds = 0
+            if unit_str == lang['shutdown_unit_minutes']:
+                delay_seconds = value * 60
+            elif unit_str == lang['shutdown_unit_hours']:
+                delay_seconds = value * 3600
+            
+            # Sử dụng /f để ép buộc đóng ứng dụng
+            self.run_command(f"shutdown /s /f /t {delay_seconds}")
+
+            # Lưu lịch hẹn của app để kiểm tra về sau mà không cần hủy lệnh hệ thống
+            try:
+                store = self._schedule_store_path()
+                data = {"scheduled_at": time.time(), "delay_seconds": delay_seconds}
+                with open(store, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+            except Exception:
+                pass
+
+            self.shutdown_status_label.config(text=lang['shutdown_status_set'].format(value=value, unit=unit_str.lower()))
+            self._show_message('title_info', 'shutdown_status_set', value=value, unit=unit_str.lower())
+
+        except (ValueError, TclError):
+            self._show_message('title_error', 'shutdown_invalid_format', msg_type='error')
+
+    def cancel_shutdown(self):
+        """Hủy lệnh hẹn giờ tắt máy."""
+        self.run_command("shutdown /a")
+        lang = LANGUAGES[self.current_lang]
+        self.shutdown_status_label.config(text=lang['shutdown_status_none'])
+        self._show_message('title_info', 'shutdown_status_none')
+        # Xóa lịch hẹn đã lưu của app (nếu có)
+        try:
+            store = self._schedule_store_path()
+            if store.exists():
+                store.unlink()
+        except Exception:
+            pass
+
+    def check_existing_shutdown_schedule(self):
+        """Kiểm tra lịch tắt máy do chính app đặt (không hủy lệnh hệ thống).
+        Nếu file lưu lịch tồn tại và ETA còn ở tương lai, hiển thị trạng thái đang hẹn.
+        """
+        lang = LANGUAGES[self.current_lang]
+        try:
+            store = self._schedule_store_path()
+            if not store.exists():
+                self.shutdown_status_label.config(text=lang['shutdown_status_none'])
+                return
+            with open(store, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            delay = int(data.get("delay_seconds", 0))
+            scheduled_at = float(data.get("scheduled_at", 0))
+            eta = scheduled_at + delay
+            now = time.time()
+            if delay <= 0 or now >= eta:
+                # Hết hạn -> xóa file
+                try:
+                    store.unlink()
+                except Exception:
+                    pass
+                self.shutdown_status_label.config(text=lang['shutdown_status_none'])
+                return
+            remaining = int(eta - now)
+            # Ưu tiên hiển thị theo giờ nếu >= 3600s, ngược lại theo phút
+            if remaining >= 3600:
+                hours = max(1, remaining // 3600)
+                self.shutdown_status_label.config(text=lang['shutdown_status_set'].format(value=hours, unit=lang['shutdown_unit_hours'].lower()))
+            else:
+                minutes = max(1, (remaining + 59) // 60)
+                self.shutdown_status_label.config(text=lang['shutdown_status_set'].format(value=minutes, unit=lang['shutdown_unit_minutes'].lower()))
+        except Exception:
+            self.shutdown_status_label.config(text=lang['shutdown_status_none'])
 
 def main():
     if os.name != 'nt':
-        messagebox.showerror("Không tương thích", "Công cụ này chỉ chạy trên Windows.")
+        messagebox.showerror("Unsupported OS", "This tool only runs on Windows.")
         return
-        
-    # --- Thêm logic kiểm tra single-instance ---
     try:
         with SingleInstance("WindowsUtilityTool_Doctoten_App_Mutex"):
             if not is_admin():
                 try:
-                    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+                    ctypes.windll.shell32.ShellExecuteW(
+                        None, "runas", sys.executable, " ".join(sys.argv), None, 1
+                    )
                 except Exception as e:
-                    messagebox.showerror("Yêu cầu quyền Admin", f"Không thể tự động yêu cầu quyền Admin.\nLỗi: {e}")
+                    messagebox.showerror(
+                        "Admin Rights Required",
+                        f"Could not request administrator privileges.\nError: {e}"
+                    )
                 return
+            set_current_process_app_id("Doctoten.WindowsUtilityTool")
+            root = tk.Tk()
+            app = WindowsUtilityTool(root)
+            root.mainloop()
+    except RuntimeError:
+        _show_message_before_init('vi', 'title_warning', 'app_already_running_msg')
+    except Exception as e:
+        messagebox.showerror("Critical Application Error", f"A critical error occurred:\n{e}")
 
-            try:
-                root = tk.Tk()
-                app = WindowsUtilityTool(root)
-                root.mainloop()
-            except Exception as e:
-                messagebox.showerror("Lỗi khởi động", f"Không thể khởi động ứng dụng: {str(e)}")
-
-    except RuntimeError as e:
-        messagebox.showwarning("Thông báo", str(e))
-        return
+def _show_message_before_init(lang_key, title_key, message_key):
+    lang = LANGUAGES.get(lang_key, LANGUAGES.get('en', {}))
+    title = lang.get(title_key, "Warning")
+    message = lang.get(message_key, "An unknown error occurred.")
+    messagebox.showwarning(title, message)
 
 if __name__ == "__main__":
     main()
