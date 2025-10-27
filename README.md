@@ -1,9 +1,9 @@
-# 🛠️ Windows Utility Tool – Hướng dẫn sử dụng | User Guide (v5.4)
+# 🛠️ Windows Utility Tool – Hướng dẫn sử dụng | User Guide (v5.6)
 
 <p align="center">
   <img src="download.gif" alt="Demo" />
   
-  <em>Windows Utility Tool v5.4</em>
+  <em>Windows Utility Tool v5.66</em>
 </p>
 
 ## Giới thiệu | Introduction
