@@ -49,34 +49,33 @@ EN:
 
 ## Các chức năng chính | Key Features
 
-### 1) Sao lưu & Khôi phục | Backup & Restore
+### Các chức năng (Tiếng Việt)
 | Chức năng | Mô tả |
 | :--- | :--- |
-| 📶 **Sao lưu WiFi** | VI: Sao lưu tất cả WiFi đã lưu (XML + mật khẩu) vào thư mục con `WiFi_Backup_YYYYMMDD_HHMMSS`. EN: Backup all saved WiFi profiles (XML + passwords) into `WiFi_Backup_YYYYMMDD_HHMMSS` under the chosen folder. |
-| 💾 **Sao lưu Driver** | Tạo một bản sao lưu toàn bộ driver của hệ thống, rất hữu ích khi cài lại Windows (đang phát triển). |
+| 📶 Sao lưu WiFi | Sao lưu tất cả WiFi (XML + mật khẩu) vào thư mục con `WiFi_Backup_YYYYMMDD_HHMMSS`. |
+| 💾 Sao lưu Driver | Tạo bản sao toàn bộ driver (đang phát triển). |
+| 🔧 Thiết lập Windows | Mở cửa sổ chạy script Chris Titus Tech: Stable/Dev (PowerShell mới). |
+| 🗑️ Xóa Bloatware | Gỡ các ứng dụng không cần thiết cài sẵn. |
+| 📋 Xem thông tin mạng | Liệt kê card mạng với IP/MAC/DNS; có nút Tải lại. |
+| 🔃 Xóa Cache DNS | Thực hiện `ipconfig /flushdns`. |
+| ⚙️ Reset TCP/IP | Thực hiện `netsh int ip reset`; yêu cầu khởi động lại. |
+| 📲 Đổi DNS nhanh | Chuyển DNS sang Google/Cloudflare hoặc về DHCP. |
+| 📥 Khôi phục WiFi | Khôi phục từ các file `.xml` đã sao lưu. |
+| ⏱️ Hẹn giờ tắt máy | Đặt phút/giờ; lưu lịch tại `%LOCALAPPDATA%\WindowsUtilityTool\shutdown_schedule.json` và hiển thị thời gian còn lại khi mở app. |
 
-### 2) Thiết lập & Tối ưu hóa | Setup & Optimize
-| Chức năng | Mô tả |
+### Key Features (English)
+| Feature | Description |
 | :--- | :--- |
-| 🔧 **Thiết lập Windows** | VI: Mở cửa sổ chạy script Chris Titus Tech: Stable/Dev (PowerShell mới). EN: Opens a window to run Chris Titus Tech scripts: Stable/Dev (new PowerShell). |
-| 🗑️ **Xóa Bloatware** | Gỡ bỏ các ứng dụng không cần thiết được cài sẵn trên Windows (đang phát triển). |
-
-### 3) Công cụ mạng | Network Tools
-Nhấn nút **"Thiết lập mạng"** để mở cửa sổ công cụ mạng chuyên dụng.
-
-
-
-| Chức năng | Mô tả |
-| :--- | :--- |
-| 📋 **Xem thông tin mạng** | VI: Liệt kê card mạng cùng IP/MAC/DNS. EN: List interfaces with IP/MAC/DNS. |
-| 🔃 **Xóa Cache DNS** | Thực hiện lệnh `ipconfig /flushdns` để xóa bộ nhớ đệm DNS, giúp khắc phục các lỗi truy cập website. |
-| ⚙️ **Reset TCP/IP** | Thực hiện lệnh `netsh int ip reset` để đặt lại toàn bộ chồng giao thức mạng, sửa các lỗi kết nối phức tạp. **Yêu cầu khởi động lại máy tính.** |
-| 📲 **Đổi DNS nhanh** | VI: Chuyển DNS sang Google/Cloudflare hoặc DHCP. EN: Switch to Google/Cloudflare or DHCP. |
-| 📥 **Khôi phục WiFi** | VI: Khôi phục từ file `.xml` đã sao lưu. EN: Restore from saved `.xml` profiles. |
-
-### 4) Hẹn giờ tắt máy | Shutdown Timer
-- VI: Đặt thời gian tắt máy theo phút/giờ; lưu lịch vào `%LOCALAPPDATA%\WindowsUtilityTool\shutdown_schedule.json` để hiển thị còn lại khi mở app.
-- EN: Schedule shutdown in minutes/hours; persists to `%LOCALAPPDATA%\WindowsUtilityTool\shutdown_schedule.json` to display remaining time on next start.
+| 📶 Backup WiFi | Backs up all saved WiFi (XML + passwords) into `WiFi_Backup_YYYYMMDD_HHMMSS` subfolder. |
+| 💾 Backup Drivers | Full driver backup (in development). |
+| 🔧 Windows Setup | Opens a window to run Chris Titus Tech scripts: Stable/Dev (new PowerShell). |
+| 🗑️ Remove Bloatware | Remove preinstalled unnecessary apps. |
+| 📋 View Network Info | List interfaces with IP/MAC/DNS; Refresh button. |
+| 🔃 Flush DNS Cache | Runs `ipconfig /flushdns`. |
+| ⚙️ Reset TCP/IP | Runs `netsh int ip reset`; requires reboot. |
+| 📲 Quick DNS Change | Switch to Google/Cloudflare or back to DHCP. |
+| 📥 Restore WiFi | Restore from saved `.xml` profiles. |
+| ⏱️ Shutdown Timer | Schedule minutes/hours; persists to `%LOCALAPPDATA%\WindowsUtilityTool\shutdown_schedule.json` to display remaining time. |
 
 ---
 
