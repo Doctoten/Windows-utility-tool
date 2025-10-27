@@ -3,7 +3,7 @@
 <p align="center">
   <img src="download.gif" alt="Demo" />
   
-  <em>Giao diện chính | Main UI – Windows Utility Tool v5.4</em>
+  <em>Windows Utility Tool v5.4</em>
 </p>
 
 ## Giới thiệu | Introduction
@@ -100,9 +100,16 @@ EN: Open "Network Setup" -> select saved `.xml` files -> Open.
 ---
 
 ## Xử lý sự cố | Troubleshooting
-- VI/EN: Luôn chạy ứng dụng với quyền Administrator (UAC). If a feature fails: try Run as administrator.
-- VI/EN: Nếu không tìm thấy Card WiFi trên máy ảo, cần gắn USB WiFi passthrough.
-- VI/EN: Nếu app không mở, antivirus có thể chặn; thêm vào exception.
+
+### Tiếng Việt
+- Luôn chạy ứng dụng với quyền Administrator (UAC). Nếu tính năng lỗi: thử “Run as administrator”.
+- Trên máy ảo (VMWare/VirtualBox) có thể không có Card WiFi; cần USB WiFi passthrough.
+- Nếu ứng dụng không mở, phần mềm antivirus có thể chặn; hãy thêm vào exception.
+
+### English
+- Always run the app with Administrator privileges (UAC). If a feature fails: try “Run as administrator”.
+- On virtual machines (VMWare/VirtualBox), WiFi adapter may be missing; use a passthrough USB WiFi.
+- If the app won’t launch, your antivirus may block it; add it to the exception list.
 
 ---
-**Phát triển bởi | Developed by: Doctoten**
+**Developed by: Doctoten**

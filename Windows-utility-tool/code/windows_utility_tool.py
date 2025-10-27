@@ -8,8 +8,8 @@ Phát triển bởi: Doctoten
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import subprocess, os, sys, shutil, threading, ctypes, psutil, time, re, json
-from datetime import datetime, timezone
+import subprocess, os, sys, threading, ctypes, psutil, time, re, json
+from datetime import datetime
 from pathlib import Path
 from ctypes import wintypes
 from tkinter import TclError
@@ -174,15 +174,7 @@ class WindowsUtilityTool:
         x = (self.root.winfo_screenwidth() // 2) - (520 // 2)
         y = (self.root.winfo_screenheight() // 2) - (470 // 2)
         self.root.geometry(f"520x470+{x}+{y}")
-        try:
-            self.root.iconbitmap(resource_path("icon.ico"))
-        except Exception:
-            try:
-                icon_png = resource_path("icon.png")
-                if os.path.exists(icon_png):
-                    self.root.iconphoto(True, tk.PhotoImage(file=icon_png))
-            except Exception:
-                pass
+        self._set_window_icon(self.root)
         self.root.configure(bg='#f0f0f0')
         
     def create_widgets(self):
@@ -297,6 +289,17 @@ class WindowsUtilityTool:
         self.status_var.set(lang.get(key, key).format(**kwargs))
         self.root.update()
         
+    def _set_window_icon(self, win):
+        try:
+            win.iconbitmap(resource_path("icon.ico"))
+        except Exception:
+            try:
+                icon_png = resource_path("icon.png")
+                if os.path.exists(icon_png):
+                    win.iconphoto(True, tk.PhotoImage(file=icon_png))
+            except Exception:
+                pass
+
     def _center_window(self, win, width=None, height=None):
         win.update_idletasks()
         if width is None or height is None:
@@ -323,15 +326,7 @@ class WindowsUtilityTool:
         self.win_setup_win.transient(self.root)
         self.win_setup_win.grab_set()
 
-        try:
-            self.win_setup_win.iconbitmap(resource_path("icon.ico"))
-        except Exception:
-            try:
-                icon_png = resource_path("icon.png")
-                if os.path.exists(icon_png):
-                    self.win_setup_win.iconphoto(True, tk.PhotoImage(file=icon_png))
-            except Exception:
-                pass
+        self._set_window_icon(self.win_setup_win)
 
         h_frame = tk.Frame(self.win_setup_win, bg='#3498db', height=60)
         h_frame.pack(fill='x')
@@ -386,15 +381,7 @@ class WindowsUtilityTool:
         self.bloat_win.resizable(True, True)
         self.bloat_win.transient(self.root)
         self.bloat_win.grab_set()
-        try:
-            self.bloat_win.iconbitmap(resource_path("icon.ico"))
-        except Exception:
-            try:
-                icon_png = resource_path("icon.png")
-                if os.path.exists(icon_png):
-                    self.bloat_win.iconphoto(True, tk.PhotoImage(file=icon_png))
-            except Exception:
-                pass
+        self._set_window_icon(self.bloat_win)
 
         h_frame = tk.Frame(self.bloat_win, bg='#e74c3c', height=60); h_frame.pack(fill='x'); h_frame.pack_propagate(False)
         self.bloat_title_lbl = tk.Label(h_frame, font=('Arial', 16, 'bold'), fg='white', bg='#e74c3c'); self.bloat_title_lbl.pack(pady=(15, 5))
@@ -517,15 +504,7 @@ class WindowsUtilityTool:
         if self.net_win and self.net_win.winfo_exists(): self.net_win.focus(); return
         self.net_win = tk.Toplevel(self.root); self.net_win.geometry("980x500")
         self.net_win.transient(self.root); self.net_win.grab_set()
-        try:
-            self.net_win.iconbitmap(resource_path("icon.ico"))
-        except Exception:
-            try:
-                icon_png = resource_path("icon.png")
-                if os.path.exists(icon_png):
-                    self.net_win.iconphoto(True, tk.PhotoImage(file=icon_png))
-            except Exception:
-                pass
+        self._set_window_icon(self.net_win)
         
         info_frame = ttk.LabelFrame(self.net_win, padding=(10, 10)); info_frame.pack(fill='x', padx=10, pady=10)
         cols = ('Name', 'Type', 'IP', 'MAC', 'DNS'); self.net_tree = ttk.Treeview(info_frame, columns=cols, show='headings', height=8)
@@ -654,17 +633,16 @@ class WindowsUtilityTool:
         try:
             self.update_status('status_loading_wifi_profiles')
             profiles_res = self.run_command("netsh wlan show profiles")
-            profiles = [
-                l.split(':', 1)[1].strip()
-                for l in profiles_res.split('\n')
-                if 'All User Profile' in l or 'Hồ sơ Tất cả Người dùng' in l
-            ]
+            profiles = []
+            for line in profiles_res.split('\n'):
+                if 'All User Profile' in line or 'Hồ sơ Tất cả Người dùng' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        profiles.append(parts[1].strip())
             if not profiles:
                 self._show_message('title_warning', 'msg_wifi_no_profile_to_backup', msg_type='warning')
                 return
-            backup_dir = filedialog.askdirectory(
-                title=LANGUAGES[self.current_lang]['title_wifi_backup_dir']
-            )
+            backup_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_wifi_backup_dir'])
             if not backup_dir:
                 return
             base_dir = Path(backup_dir)
@@ -676,12 +654,8 @@ class WindowsUtilityTool:
             for i, p in enumerate(profiles, 1):
                 self.update_status('status_backing_up_wifi', i=i, total=len(profiles), profile=p)
                 try:
-                    self.run_command(
-                        f'netsh wlan export profile name="{p}" folder="{backup_path}" key=clear'
-                    )
-                    res_show = self.run_command(
-                        f'netsh wlan show profile name="{p}" key=clear'
-                    )
+                    self.run_command(f'netsh wlan export profile name="{p}" folder="{backup_path}" key=clear')
+                    res_show = self.run_command(f'netsh wlan show profile name="{p}" key=clear')
                     pwd = "N/A"
                     for res_l in res_show.split('\n'):
                         if "Key Content" in res_l or "Nội dung Khóa" in res_l:
@@ -694,9 +668,7 @@ class WindowsUtilityTool:
             if wifi_data:
                 with open(backup_path / "WiFi_Passwords.txt", "w", encoding="utf-8") as f:
                     f.write("\n".join(wifi_data))
-            self._show_message(
-                'title_info', 'msg_wifi_backup_complete', s=s_count, t=len(profiles), path=backup_path, parent=self.root
-            )
+            self._show_message('title_info', 'msg_wifi_backup_complete', s=s_count, t=len(profiles), path=backup_path, parent=self.root)
             os.startfile(backup_path)
         except Exception as e:
             log_file = Path.home() / "windows_utility_tool_wifi_log.txt"
@@ -799,14 +771,9 @@ def main():
         with SingleInstance("WindowsUtilityTool_Doctoten_App_Mutex"):
             if not is_admin():
                 try:
-                    ctypes.windll.shell32.ShellExecuteW(
-                        None, "runas", sys.executable, " ".join(sys.argv), None, 1
-                    )
+                    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
                 except Exception as e:
-                    messagebox.showerror(
-                        "Admin Rights Required",
-                        f"Could not request administrator privileges.\nError: {e}"
-                    )
+                    messagebox.showerror("Admin Rights Required", f"Could not request administrator privileges.\nError: {e}")
                 return
             set_current_process_app_id("Doctoten.WindowsUtilityTool")
             root = tk.Tk()
