@@ -201,7 +201,10 @@ class WindowsUtilityTool:
         # Status Bar and Language Switcher
         status_frame = tk.Frame(self.root, bg='#34495e', height=30); status_frame.pack(fill='x', side='bottom'); status_frame.pack_propagate(False)
         self.status_var = tk.StringVar()
-        self.status_label = tk.Label(status_frame, textvariable=self.status_var, font=('Arial', 9), fg='white', bg='#34495e'); self.status_label.pack(side='left', padx=10, pady=5)
+        self.status_label = tk.Label(status_frame, textvariable=self.status_var, font=('Arial', 9), fg='white', bg='#34495e'); self.status_label.pack(side='left', padx=10, pady=5, fill='x', expand=True)
+        # Main progress bar for long-running tasks (e.g., WiFi backup)
+        self.main_progress = ttk.Progressbar(status_frame, length=160, mode='determinate')
+        self._main_progress_visible = False  # show only when running
         
         self.lang_menu_btn = tk.Menubutton(status_frame, text='Language', bg='#34495e', fg='white', activebackground='#34495e', activeforeground='white', relief='ridge', bd=1, highlightthickness=1, highlightbackground='#2c3e50', highlightcolor='#ecf0f1')
         self.lang_menu = tk.Menu(self.lang_menu_btn, tearoff=0, bg='#34495e', fg='white', activebackground='#2c3e50', activeforeground='white')
@@ -311,6 +314,34 @@ class WindowsUtilityTool:
         x = (win.winfo_screenwidth() // 2) - (width // 2)
         y = (win.winfo_screenheight() // 2) - (height // 2)
         win.geometry(f"{width}x{height}+{x}+{y}")
+
+    # Progress helpers (main status bar)
+    def _show_main_progress(self, maximum=100):
+        try:
+            self.main_progress['maximum'] = maximum
+            self.main_progress['value'] = 0
+            if not getattr(self, '_main_progress_visible', False):
+                self.main_progress.pack(side='right', padx=6)
+                self._main_progress_visible = True
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
+    def _update_main_progress(self, value):
+        try:
+            self.main_progress['value'] = value
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
+    def _hide_main_progress(self):
+        try:
+            if getattr(self, '_main_progress_visible', False):
+                self.main_progress.pack_forget()
+                self._main_progress_visible = False
+            self.root.update_idletasks()
+        except Exception:
+            pass
 
     def windows_setup(self):
         self.open_win_setup_window()
@@ -435,7 +466,10 @@ class WindowsUtilityTool:
         s_frame.pack(fill='x', side='bottom')
         s_frame.pack_propagate(False)
         self.bloat_status_var = tk.StringVar()
-        tk.Label(s_frame, textvariable=self.bloat_status_var, font=('Arial', 9), fg='white', bg='#34495e').pack(side='left', padx=10, pady=5)
+        tk.Label(s_frame, textvariable=self.bloat_status_var, font=('Arial', 9), fg='white', bg='#34495e').pack(side='left', padx=10, pady=5, fill='x', expand=True)
+        # Progress bar for bloatware deletion (show only when running)
+        self.bloat_progress = ttk.Progressbar(s_frame, length=220, mode='determinate')
+        self._bloat_progress_visible = False
         
         self.bloat_tree.bind('<Button-1>', self.toggle_bloatware_selection)
         
@@ -484,11 +518,63 @@ class WindowsUtilityTool:
     def remove_selected_bloatware(self):
         items = [(self.bloat_tree.item(i, 'values')[2], self.bloat_tree.item(i, 'values')[1], i) for i in self.bloat_tree.get_children() if self.bloat_tree.item(i, 'values')[0] == '☑']
         if not items: self._show_message('title_warning', 'msg_bloat_no_app_selected', msg_type='warning', parent=self.bloat_win); return
-        app_list = '\n'.join([f'• {name}' for _, name, _ in items])
-        if self._show_message('title_confirm', 'msg_confirm_bloat_remove', msg_type='confirm', parent=self.bloat_win, count=len(items), app_list=app_list):
+        if self._confirm_bloatware_removal(items):
             self.run_in_thread(self._remove_bloatware_task, items)
+
+    def _confirm_bloatware_removal(self, items):
+        lang = LANGUAGES[self.current_lang]
+        dlg = tk.Toplevel(self.bloat_win)
+        dlg.title(lang['title_confirm'])
+        dlg.geometry("420x320")
+        dlg.resizable(False, False)
+        dlg.transient(self.bloat_win)
+        dlg.grab_set()
+        self._set_window_icon(dlg)
+
+        container = tk.Frame(dlg, bg='#f0f0f0')
+        container.pack(fill='both', expand=True, padx=12, pady=12)
+
+        # Build intro and warning from existing message template
+        tmpl = lang.get('msg_confirm_bloat_remove', '')
+        lines = tmpl.split('\n') if tmpl else []
+        intro = lines[0] if lines else ''
+        intro = intro.format(count=len(items), app_list="")
+        warning = lines[-1] if len(lines) >= 2 else ''
+
+        tk.Label(container, text=intro, font=('Arial', 10, 'bold'), bg='#f0f0f0', anchor='w', justify='left', wraplength=380).pack(fill='x')
+
+        list_frame = tk.Frame(container, bg='#f0f0f0')
+        list_frame.pack(fill='both', expand=True, pady=(8, 8))
+        lb = tk.Listbox(list_frame, height=8)
+        sb = ttk.Scrollbar(list_frame, orient='vertical', command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        lb.pack(side='left', fill='both', expand=True)
+        sb.pack(side='right', fill='y')
+        for _, name, _ in items:
+            lb.insert('end', f"• {name}")
+
+        if warning:
+            tk.Label(container, text=warning, fg='#e74c3c', bg='#f0f0f0', anchor='w', justify='left', wraplength=380).pack(fill='x')
+
+        btn_frame = tk.Frame(container, bg='#f0f0f0')
+        btn_frame.pack(fill='x', pady=(8, 0))
+        result = {'val': False}
+        def on_ok():
+            result['val'] = True
+            dlg.destroy()
+        def on_cancel():
+            dlg.destroy()
+        tk.Button(btn_frame, text=lang['btn_confirm'], bg='#e74c3c', fg='white', width=12, command=on_ok).pack(side='right', padx=5)
+        tk.Button(btn_frame, text=lang['btn_cancel'], bg='#95a5a6', fg='white', width=12, command=on_cancel).pack(side='right', padx=5)
+        dlg.bind('<Return>', lambda e: on_ok())
+        dlg.bind('<Escape>', lambda e: on_cancel())
+        self._center_window(dlg, 420, 320)
+        dlg.wait_window()
+        return result['val']
     def _remove_bloatware_task(self, items):
         s_count = 0; failed = []
+        # Show progress bar
+        self._show_bloat_progress(len(items))
         for i, (pkg, name, item_id) in enumerate(items, 1):
             self.update_status('status_removing_bloatware', i=i, total=len(items), name=name)
             try:
@@ -496,9 +582,42 @@ class WindowsUtilityTool:
                 if "Error" in result: raise Exception(result)
                 self.bloat_tree.delete(item_id); s_count += 1
             except Exception as e: failed.append(f'• {name}: {e}')
+            self._update_bloat_progress(i)
         msg_val = '\n'.join(failed) if failed else ""
         self._show_message('title_info', f'Removed: {s_count}/{len(items)}\n\n{msg_val}', parent=self.bloat_win)
         self.update_status('status_ready')
+        self._hide_bloat_progress()
+
+    # Progress helpers (bloatware window)
+    def _show_bloat_progress(self, maximum=100):
+        try:
+            self.bloat_progress['maximum'] = maximum
+            self.bloat_progress['value'] = 0
+            if not getattr(self, '_bloat_progress_visible', False):
+                self.bloat_progress.pack(side='right', padx=10)
+                self._bloat_progress_visible = True
+            if self.bloat_win and self.bloat_win.winfo_exists():
+                self.bloat_win.update_idletasks()
+        except Exception:
+            pass
+
+    def _update_bloat_progress(self, value):
+        try:
+            self.bloat_progress['value'] = value
+            if self.bloat_win and self.bloat_win.winfo_exists():
+                self.bloat_win.update_idletasks()
+        except Exception:
+            pass
+
+    def _hide_bloat_progress(self):
+        try:
+            if getattr(self, '_bloat_progress_visible', False):
+                self.bloat_progress.pack_forget()
+                self._bloat_progress_visible = False
+            if self.bloat_win and self.bloat_win.winfo_exists():
+                self.bloat_win.update_idletasks()
+        except Exception:
+            pass
 
     def open_network_window(self):
         if self.net_win and self.net_win.winfo_exists(): self.net_win.focus(); return
@@ -642,6 +761,8 @@ class WindowsUtilityTool:
             if not profiles:
                 self._show_message('title_warning', 'msg_wifi_no_profile_to_backup', msg_type='warning')
                 return
+            # Configure and show main progress bar
+            self._show_main_progress(len(profiles))
             backup_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_wifi_backup_dir'])
             if not backup_dir:
                 return
@@ -665,6 +786,7 @@ class WindowsUtilityTool:
                     s_count += 1
                 except Exception as e:
                     logs.append(f"Error with profile '{p}': {e}")
+                self._update_main_progress(i)
             if wifi_data:
                 with open(backup_path / "WiFi_Passwords.txt", "w", encoding="utf-8") as f:
                     f.write("\n".join(wifi_data))
@@ -679,6 +801,7 @@ class WindowsUtilityTool:
             messagebox.showerror(title, f'A critical error occurred. See log file for details:\n{log_file}')
         finally:
             self.update_status('status_ready')
+            self._hide_main_progress()
 
     def set_shutdown(self):
         """Hẹn giờ tắt máy theo khoảng thời gian và ép buộc đóng ứng dụng."""
