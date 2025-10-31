@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Tiện ích hỗ trợ cài Windows - Windows Installation Support Utility
-Phiên bản: 5.4 (Tối ưu và Hoàn thiện)
+Phiên bản: 5.9 (Tối ưu giao diện và Hoàn thiện)
 Phát triển bởi: Doctoten
 """
 
@@ -13,6 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from ctypes import wintypes
 from tkinter import TclError
+import ttkbootstrap as ttkb
+from ttkbootstrap import Style
+import xml.etree.ElementTree as ET
 
 # ==================================================================================================
 # HỆ THỐNG QUẢN LÝ NGÔN NGỮ
@@ -21,7 +24,7 @@ LANGUAGES = {
     'vi': {
         "app_title": "🛠️ Tiện ích hỗ trợ cài Win dạo", "app_version": "v5.4 (Build by Doctoten)",
         "win_setup_btn": "🔧 Thiết lập Windows", "net_setup_btn": "🛜 Thiết lập mạng", "bloat_remove_btn": "🗑️ Xóa Bloatware",
-        "wifi_backup_btn": "📶 Sao lưu Wifi", "driver_backup_btn": "💾 Sao lưu Driver",
+        "wifi_backup_btn": "📶 Sao lưu Wifi", "driver_setup_btn": "🧩 Thiết lập Driver",
         "net_win_title": "Thiết lập mạng", "net_info_frame": "Thông tin Card mạng", "net_col_name": "Tên", "net_col_type": "Trạng thái",
         "net_col_ip": "Địa chỉ IP", "net_col_mac": "Địa chỉ MAC", "net_col_dns": "DNS Servers", "net_refresh_btn": "🔃 Tải lại",
         "net_actions_frame": "Chức năng", "net_flush_dns_btn": "Xóa Cache DNS", "net_reset_tcp_btn": "Reset TCP/IP",
@@ -56,6 +59,22 @@ LANGUAGES = {
         "title_wifi_backup_dir": "Chọn thư mục để lưu sao lưu WiFi",
         "msg_wlan_not_found": "Không tìm thấy dịch vụ WLAN.", "status_starting_wlan": "Đang khởi động dịch vụ WLAN...",
         "msg_wlan_cannot_start": "Không thể khởi động dịch vụ WLAN.",
+        "title_driver_backup_dir": "Chọn thư mục để lưu Driver",
+        "status_backing_up_drivers": "Đang sao lưu Driver...",
+        "msg_driver_backup_complete": "Sao lưu driver hoàn tất.\nDữ liệu lưu tại:\n{path}",
+        "msg_driver_backup_fail": "Sao lưu driver thất bại.\nChi tiết:\n{e}",
+        "status_canceling_drivers": "Đang hủy thao tác driver...",
+        "msg_driver_cancelled": "Đã hủy thao tác driver.",
+        "driver_win_title": "Thiết lập Driver",
+        "driver_header_subtitle": "Sao lưu và Cài đặt (Import) Driver",
+        "driver_backup_inner_btn": "💾 Sao lưu Driver",
+        "driver_import_inner_btn": "⬆️ Cài đặt/Import Driver",
+        "title_driver_import_dir": "Chọn thư mục chứa file .INF",
+        "status_importing_drivers": "Đang cài đặt Driver...",
+        "msg_driver_import_complete": "Cài đặt driver hoàn tất.",
+        "msg_driver_import_fail": "Cài đặt driver thất bại.\nChi tiết:\n{e}",
+        "msg_bloat_remove_complete": "Xóa xong. Thành công: {s}/{t}.\n\nLỗi:\n{errors}",
+        "msg_critical_error_log": "Đã xảy ra lỗi nghiêm trọng. Xem chi tiết trong file log:\n{path}",
         "app_already_running_msg": "Một phiên bản khác của ứng dụng đã đang chạy.",
         "shutdown_status_set": "Máy sẽ tắt sau {value} {unit}", "shutdown_status_none": "Không có lịch tắt máy.",
         "shutdown_status_pending": "Đang có lịch tắt máy.",
@@ -65,7 +84,7 @@ LANGUAGES = {
     'en': {
         "app_title": "🛠️ Windows Setup Utility", "app_version": "v5.4 (Build by Doctoten)",
         "win_setup_btn": "🔧 Windows Setup", "net_setup_btn": "🛜 Network Setup", "bloat_remove_btn": "🗑️ Remove Bloatware",
-        "wifi_backup_btn": "📶 Backup Wifi", "driver_backup_btn": "💾 Backup Drivers",
+        "wifi_backup_btn": "📶 Backup Wifi", "driver_setup_btn": "🧩 Driver Setup",
         "net_win_title": "Network Setup", "net_info_frame": "Network Interface Information", "net_col_name": "Name", "net_col_type": "Status",
         "net_col_ip": "IP Address", "net_col_mac": "MAC Address", "net_col_dns": "DNS Servers", "net_refresh_btn": "🔃 Refresh",
         "net_actions_frame": "Actions", "net_flush_dns_btn": "Flush DNS Cache", "net_reset_tcp_btn": "Reset TCP/IP",
@@ -100,6 +119,22 @@ LANGUAGES = {
         "title_wifi_backup_dir": "Select folder to save WiFi backup",
         "msg_wlan_not_found": "WLAN service not found.", "status_starting_wlan": "Starting WLAN service...",
         "msg_wlan_cannot_start": "Could not start WLAN service.",
+        "title_driver_backup_dir": "Select folder to save Drivers",
+        "status_backing_up_drivers": "Backing up drivers...",
+        "msg_driver_backup_complete": "Driver backup completed.\nData saved at:\n{path}",
+        "msg_driver_backup_fail": "Driver backup failed.\nDetails:\n{e}",
+        "status_canceling_drivers": "Canceling driver operation...",
+        "msg_driver_cancelled": "Driver operation canceled.",
+        "driver_win_title": "Driver Setup",
+        "driver_header_subtitle": "Backup and Import/Install Drivers",
+        "driver_backup_inner_btn": "💾 Backup Drivers",
+        "driver_import_inner_btn": "⬆️ Import/Install Drivers",
+        "title_driver_import_dir": "Select folder with .INF files",
+        "status_importing_drivers": "Installing drivers...",
+        "msg_driver_import_complete": "Driver installation completed.",
+        "msg_driver_import_fail": "Driver installation failed.\nDetails:\n{e}",
+        "msg_bloat_remove_complete": "Removal complete. Success: {s}/{t}.\n\nFailures:\n{errors}",
+        "msg_critical_error_log": "A critical error occurred. See log file for details:\n{path}",
         "app_already_running_msg": "Another instance of the application is already running.",
         "shutdown_status_set": "PC will shut down in {value} {unit}", "shutdown_status_none": "No shutdown scheduled.",
         "shutdown_status_pending": "A shutdown is scheduled.",
@@ -135,7 +170,7 @@ class SingleInstance:
 
 def is_admin():
     try: return ctypes.windll.shell32.IsUserAnAdmin()
-    except: return False
+    except Exception: return False
 
 def resource_path(relative_path):
     try: base_path = sys._MEIPASS
@@ -151,6 +186,13 @@ def set_current_process_app_id(app_id):
 class WindowsUtilityTool:
     def __init__(self, root):
         self.root = root
+        try:
+            # Đặt font mặc định cho ttk qua Style để tránh gán trực tiếp -font vào widget
+            self.style = Style()
+            self.style.configure('TButton', font=('Segoe UI', 10))
+            self.style.configure('TLabel', font=('Segoe UI', 10))
+        except Exception:
+            pass
         self.current_lang = 'vi'
         self.net_win = None
         self.bloat_win = None
@@ -179,24 +221,30 @@ class WindowsUtilityTool:
         
     def create_widgets(self):
         # Header
-        self.header_frame = tk.Frame(self.root, bg='#2c3e50', height=80); self.header_frame.pack(fill='x'); self.header_frame.pack_propagate(False)
-        self.title_label = tk.Label(self.header_frame, font=('Arial', 16, 'bold'), fg='white', bg='#2c3e50'); self.title_label.pack(pady=(15, 5))
-        self.version_label = tk.Label(self.header_frame, font=('Arial', 10), fg='#ecf0f1', bg='#2c3e50'); self.version_label.pack()
+        self.header_frame = tk.Frame(self.root, bg='#2c3e50', height=70); self.header_frame.pack(fill='x'); self.header_frame.pack_propagate(False)
+        self.title_label = tk.Label(self.header_frame, font=('Segoe UI', 15, 'bold'), fg='white', bg='#2c3e50'); self.title_label.pack(pady=(10, 2))
+        self.version_label = tk.Label(self.header_frame, font=('Segoe UI', 9), fg='#ecf0f1', bg='#2c3e50'); self.version_label.pack()
 
         # Content
-        content_frame = tk.Frame(self.root, bg='#f0f0f0'); content_frame.pack(fill='both', expand=True, padx=20, pady=10)
-        btn_style = {'font': ('Arial', 10, 'bold'), 'width': 22, 'height': 2, 'relief': 'raised', 'bd': 2, 'cursor': 'hand2'}
+        content_frame = tk.Frame(self.root, bg='#f0f0f0'); content_frame.pack(fill='both', expand=True, padx=20, pady=15)
+        btn_font = ('Segoe UI', 10)
         
-        r1 = tk.Frame(content_frame, bg='#f0f0f0'); r1.pack(fill='x', pady=5)
-        self.win_setup_btn = tk.Button(r1, bg='#3498db', fg='white', command=self.windows_setup, **btn_style); self.win_setup_btn.pack(side='left', padx=10)
-        self.net_setup_btn = tk.Button(r1, bg='#95a5a6', fg='white', command=self.open_network_window, **btn_style); self.net_setup_btn.pack(side='right', padx=10)
-        
-        r2 = tk.Frame(content_frame, bg='#f0f0f0'); r2.pack(fill='x', pady=5)
-        self.bloat_remove_btn = tk.Button(r2, bg='#e74c3c', fg='white', command=self.open_bloatware_window, **btn_style); self.bloat_remove_btn.pack(side='left', padx=10)
-        self.wifi_backup_btn = tk.Button(r2, bg='#f39c12', fg='white', command=self.backup_wifi, **btn_style); self.wifi_backup_btn.pack(side='right', padx=10)
+        grid_frame = tk.Frame(content_frame, bg='#f0f0f0')
+        grid_frame.pack(fill='x', pady=4)
+        # 3 cột đồng đều
+        grid_frame.grid_columnconfigure(0, weight=1, uniform='funcs')
+        grid_frame.grid_columnconfigure(1, weight=1, uniform='funcs')
+        grid_frame.grid_columnconfigure(2, weight=1, uniform='funcs')
+        # 2 hàng
+        grid_frame.grid_rowconfigure(0, weight=1)
+        grid_frame.grid_rowconfigure(1, weight=1)
 
-        r3 = tk.Frame(content_frame, bg='#f0f0f0'); r3.pack(fill='x', pady=5)
-        self.driver_backup_btn = tk.Button(r3, bg='#27ae60', fg='white', command=self.backup_drivers, **btn_style); self.driver_backup_btn.pack(side='left', padx=10)
+        pad = {'padx': 6, 'pady': 6}
+        self.win_setup_btn = ttkb.Button(grid_frame, command=self.windows_setup, bootstyle='primary'); self.win_setup_btn.grid(row=0, column=0, sticky='nsew', **pad)
+        self.net_setup_btn = ttkb.Button(grid_frame, command=self.open_network_window, bootstyle='secondary'); self.net_setup_btn.grid(row=0, column=1, sticky='nsew', **pad)
+        self.bloat_remove_btn = ttkb.Button(grid_frame, command=self.open_bloatware_window, bootstyle='danger'); self.bloat_remove_btn.grid(row=0, column=2, sticky='nsew', **pad)
+        self.wifi_backup_btn = ttkb.Button(grid_frame, command=self.backup_wifi, bootstyle='warning'); self.wifi_backup_btn.grid(row=1, column=0, sticky='nsew', **pad)
+        self.driver_backup_btn = ttkb.Button(grid_frame, command=self.open_driver_window, bootstyle='success'); self.driver_backup_btn.grid(row=1, column=1, sticky='nsew', **pad)
         
         # Status Bar and Language Switcher
         status_frame = tk.Frame(self.root, bg='#34495e', height=30); status_frame.pack(fill='x', side='bottom'); status_frame.pack_propagate(False)
@@ -204,6 +252,8 @@ class WindowsUtilityTool:
         self.status_label = tk.Label(status_frame, textvariable=self.status_var, font=('Arial', 9), fg='white', bg='#34495e'); self.status_label.pack(side='left', padx=10, pady=5, fill='x', expand=True)
         # Main progress bar for long-running tasks (e.g., WiFi backup)
         self.main_progress = ttk.Progressbar(status_frame, length=160, mode='determinate')
+        self.main_progress_var = tk.StringVar(value="")
+        self.main_progress_label = tk.Label(status_frame, textvariable=self.main_progress_var, font=('Arial', 9), fg='white', bg='#34495e')
         self._main_progress_visible = False  # show only when running
         
         self.lang_menu_btn = tk.Menubutton(status_frame, text='Language', bg='#34495e', fg='white', activebackground='#34495e', activeforeground='white', relief='ridge', bd=1, highlightthickness=1, highlightbackground='#2c3e50', highlightcolor='#ecf0f1')
@@ -230,9 +280,13 @@ class WindowsUtilityTool:
 
         # Bottom row: action buttons
         sf_bottom = tk.Frame(shutdown_frame); sf_bottom.pack(fill='x', pady=(6, 0))
-        btn_style_small = {'font':('Arial', 8), 'fg':'white', 'width': 10}
-        self.shutdown_set_btn = tk.Button(sf_bottom, bg='#3498db', command=self.set_shutdown, **btn_style_small); self.shutdown_set_btn.pack(side='left', padx=5)
-        self.shutdown_cancel_btn = tk.Button(sf_bottom, bg='#e74c3c', command=self.cancel_shutdown, **btn_style_small); self.shutdown_cancel_btn.pack(side='left', padx=5)
+        sf_bottom.columnconfigure(0, weight=1); sf_bottom.columnconfigure(1, weight=1)
+
+        self.shutdown_set_btn = ttkb.Button(sf_bottom, command=self.set_shutdown, bootstyle='primary')
+        self.shutdown_set_btn.grid(row=0, column=0, sticky='ew', padx=(0,2))
+        
+        self.shutdown_cancel_btn = ttkb.Button(sf_bottom, command=self.cancel_shutdown, bootstyle='danger')
+        self.shutdown_cancel_btn.grid(row=0, column=1, sticky='ew', padx=(2,0))
 
     def update_ui_language(self):
         lang = LANGUAGES[self.current_lang]
@@ -243,7 +297,7 @@ class WindowsUtilityTool:
         self.net_setup_btn.config(text=lang['net_setup_btn'])
         self.bloat_remove_btn.config(text=lang['bloat_remove_btn'])
         self.wifi_backup_btn.config(text=lang['wifi_backup_btn'])
-        self.driver_backup_btn.config(text=lang['driver_backup_btn'])
+        self.driver_backup_btn.config(text=lang['driver_setup_btn'])
         self.status_var.set(lang['status_ready'])
         if self.net_win and self.net_win.winfo_exists(): self._update_network_window_lang()
         if self.bloat_win and self.bloat_win.winfo_exists(): self._update_bloatware_window_lang()
@@ -278,6 +332,10 @@ class WindowsUtilityTool:
 
     def run_in_thread(self, target_func, *args):
         threading.Thread(target=target_func, args=args, daemon=True).start()
+
+    def schedule_on_main_thread(self, func, *args, **kwargs):
+        """Schedules a function to be called in the main GUI thread."""
+        self.root.after(0, lambda: func(*args, **kwargs))
 
     def run_command(self, command, **kwargs):
         try:
@@ -320,7 +378,10 @@ class WindowsUtilityTool:
         try:
             self.main_progress['maximum'] = maximum
             self.main_progress['value'] = 0
+            self.main_progress_var.set("0%")
             if not getattr(self, '_main_progress_visible', False):
+                # Pack label first so it stays at the far right
+                self.main_progress_label.pack(side='right', padx=(6, 8))
                 self.main_progress.pack(side='right', padx=6)
                 self._main_progress_visible = True
             self.root.update_idletasks()
@@ -330,6 +391,12 @@ class WindowsUtilityTool:
     def _update_main_progress(self, value):
         try:
             self.main_progress['value'] = value
+            try:
+                maximum = float(self.main_progress['maximum']) or 1.0
+            except Exception:
+                maximum = 1.0
+            pct = int((float(value) / maximum) * 100)
+            self.main_progress_var.set(f"{pct}%")
             self.root.update_idletasks()
         except Exception:
             pass
@@ -338,7 +405,9 @@ class WindowsUtilityTool:
         try:
             if getattr(self, '_main_progress_visible', False):
                 self.main_progress.pack_forget()
+                self.main_progress_label.pack_forget()
                 self._main_progress_visible = False
+            self.main_progress_var.set("")
             self.root.update_idletasks()
         except Exception:
             pass
@@ -370,10 +439,10 @@ class WindowsUtilityTool:
         content_frame = tk.Frame(self.win_setup_win, bg='#f0f0f0')
         content_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        self.win_setup_stable_btn = tk.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/win"), font=('Arial', 11, 'bold'), height=2)
+        self.win_setup_stable_btn = ttkb.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/win"), bootstyle='primary')
         self.win_setup_stable_btn.pack(fill='x', pady=5)
 
-        self.win_setup_dev_btn = tk.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/windev"), font=('Arial', 11, 'bold'), height=2)
+        self.win_setup_dev_btn = ttkb.Button(content_frame, command=lambda: self._run_win_script("https://christitus.com/windev"), bootstyle='secondary')
         self.win_setup_dev_btn.pack(fill='x', pady=5)
         
         self.win_setup_info_lbl = tk.Label(content_frame, font=('Arial', 9, 'italic'), bg='#f0f0f0', wraplength=450, justify='center')
@@ -393,17 +462,220 @@ class WindowsUtilityTool:
 
     def _run_win_script(self, url):
         self.update_status('status_running_win_script')
-        command = f"start powershell -NoExit -Command \"irm '{url}' | iex\""
+        command = f"powershell -NoExit -Command \"irm '{url}' | iex\""
         try:
-            os.system(command)
+            subprocess.Popen(command, shell=True)
         except Exception as e:
             title = LANGUAGES[self.current_lang]['title_error']
             messagebox.showerror(title, f"Failed to launch script: {e}", parent=self.win_setup_win)
         
         self.update_status('status_ready')
 
+    def open_driver_window(self):
+        if hasattr(self, 'driver_win') and self.driver_win and self.driver_win.winfo_exists():
+            self.driver_win.focus(); return
+        self.driver_win = tk.Toplevel(self.root)
+        self.driver_win.geometry("500x300")
+        self.driver_win.resizable(False, False)
+        self.driver_win.transient(self.root)
+        self.driver_win.grab_set()
+        self._set_window_icon(self.driver_win)
+
+        h_frame = tk.Frame(self.driver_win, bg='#27ae60', height=60)
+        h_frame.pack(fill='x'); h_frame.pack_propagate(False)
+        self.driver_title_lbl = tk.Label(h_frame, font=('Arial', 16, 'bold'), fg='white', bg='#27ae60'); self.driver_title_lbl.pack(pady=(5,0))
+        self.driver_subtitle_lbl = tk.Label(h_frame, font=('Arial', 10), fg='#ecf0f1', bg='#27ae60'); self.driver_subtitle_lbl.pack()
+
+        content_frame = tk.Frame(self.driver_win, bg='#f0f0f0')
+        content_frame.pack(fill='both', expand=True, padx=20, pady=20)
+
+        self.driver_backup_inner_btn = ttkb.Button(content_frame, bootstyle='success', command=self.backup_drivers)
+        self.driver_backup_inner_btn.pack(fill='x', pady=6)
+
+        self.driver_import_inner_btn = ttkb.Button(content_frame, bootstyle='primary', command=self.import_drivers)
+        self.driver_import_inner_btn.pack(fill='x', pady=6)
+
+        # Cancel button (visible only during driver operations)
+        self.driver_cancel_btn = ttkb.Button(content_frame, bootstyle='danger', command=self.cancel_driver_operation)
+        self.driver_cancel_btn.pack_forget()
+
+        self._update_driver_window_lang()
+        self._center_window(self.driver_win, 500, 300)
+
+    def _update_driver_window_lang(self):
+        lang = LANGUAGES[self.current_lang]
+        if hasattr(self, 'driver_win') and self.driver_win and self.driver_win.winfo_exists():
+            self.driver_win.title(lang['driver_win_title'])
+            self.driver_title_lbl.config(text=lang['driver_win_title'])
+            self.driver_subtitle_lbl.config(text=lang['driver_header_subtitle'])
+            self.driver_backup_inner_btn.config(text=lang['driver_backup_inner_btn'])
+            self.driver_import_inner_btn.config(text=lang['driver_import_inner_btn'])
+            if hasattr(self, 'driver_cancel_btn'):
+                self.driver_cancel_btn.config(text=lang['btn_cancel'])
+
+    # ---- Driver operation state helpers ----
+    def _set_driver_running_state(self, running):
+        try:
+            if running:
+                if hasattr(self, 'driver_cancel_btn') and self.driver_win and self.driver_win.winfo_exists():
+                    self.driver_cancel_btn.pack(fill='x', pady=6)
+                if hasattr(self, 'driver_backup_inner_btn'): self.driver_backup_inner_btn.config(state='disabled')
+                if hasattr(self, 'driver_import_inner_btn'): self.driver_import_inner_btn.config(state='disabled')
+            else:
+                if hasattr(self, 'driver_cancel_btn') and self.driver_win and self.driver_win.winfo_exists():
+                    self.driver_cancel_btn.pack_forget()
+                if hasattr(self, 'driver_backup_inner_btn'): self.driver_backup_inner_btn.config(state='normal')
+                if hasattr(self, 'driver_import_inner_btn'): self.driver_import_inner_btn.config(state='normal')
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
+    def cancel_driver_operation(self):
+        # User-initiated cancel: mark flag and try to terminate process
+        self._driver_cancel_requested = True
+        self.update_status('status_canceling_drivers')
+        self._terminate_driver_proc()
+
+    def _terminate_driver_proc(self):
+        proc = getattr(self, '_driver_proc', None)
+        try:
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                try:
+                    subprocess.run(f'taskkill /PID {proc.pid} /T /F', shell=True, capture_output=True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def import_drivers(self):
+        src_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_driver_import_dir'], parent=self.driver_win if hasattr(self, 'driver_win') else self.root)
+        if not src_dir:
+                    return
+        self.update_status('status_importing_drivers')
+        self._driver_cancel_requested = False
+        self._show_main_progress(100)
+        self._set_driver_running_state(True)
+        self.run_in_thread(self._import_drivers_task, src_dir)
+        # Tự đóng cửa sổ Driver Setup sau khi người dùng chọn xong
+        try:
+            if hasattr(self, 'driver_win') and self.driver_win and self.driver_win.winfo_exists():
+                self.driver_win.destroy()
+        except Exception:
+            pass
+
+    def _import_drivers_task(self, src_dir):
+        # Tiến trình đã hiển thị từ thread chính
+        try:
+            cmd = f'pnputil /add-driver "{Path(src_dir) / "*.inf"}" /subdirs /install'
+            startupinfo = subprocess.STARTUPINFO(); startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            creation = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, startupinfo=startupinfo, creationflags=creation)
+            self._driver_proc = proc
+            fake_val = 0
+            while True:
+                ret = proc.poll()
+                if getattr(self, '_driver_cancel_requested', False):
+                    self._terminate_driver_proc()
+                    break
+                if ret is not None:
+                    break
+                if fake_val < 90:
+                    fake_val = min(90, fake_val + 1)
+                    self.schedule_on_main_thread(self._update_main_progress, fake_val)
+                time.sleep(0.2)
+
+            if getattr(self, '_driver_cancel_requested', False):
+                self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_driver_cancelled', parent=self.root)
+            elif proc.returncode == 0:
+                self._update_main_progress(100)
+                self._show_message('title_info', 'msg_driver_import_complete', parent=self.root)
+            else:
+                out = proc.stdout.read() if proc.stdout else ''
+                self._update_main_progress(100)
+                self._show_message('title_error', 'msg_driver_import_fail', msg_type='error', e=out, parent=self.root)
+        except Exception as e:
+            self._update_main_progress(100)
+            self._show_message('title_error', 'msg_driver_import_fail', msg_type='error', e=str(e), parent=self.root)
+        finally:
+            self.update_status('status_ready')
+            self._hide_main_progress()
+            self._driver_proc = None
+            self._driver_cancel_requested = False
+            self.schedule_on_main_thread(self._set_driver_running_state, False)
+
     def backup_drivers(self):
-        self._show_message('title_info', 'status_dev')
+        # Chọn thư mục đích
+        target_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_driver_backup_dir'], parent=self.root)
+        if not target_dir:
+                    return
+        # Cập nhật trạng thái và chạy nền
+        self.update_status('status_backing_up_drivers')
+        self._driver_cancel_requested = False
+        self._show_main_progress(100)
+        self._set_driver_running_state(True)
+        self.run_in_thread(self._backup_drivers_task, target_dir)
+        # Tự đóng cửa sổ Driver Setup sau khi người dùng chọn xong
+        try:
+            if hasattr(self, 'driver_win') and self.driver_win and self.driver_win.winfo_exists():
+                self.driver_win.destroy()
+        except Exception:
+            pass
+
+    def _backup_drivers_task(self, target_dir):
+        # Tiến trình đã hiển thị từ thread chính
+        try:
+            base_dir = Path(target_dir)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_path = base_dir / f"Driver_Backup_{timestamp}"
+            backup_path.mkdir(parents=True, exist_ok=True)
+
+            # Chạy DISM export driver
+            cmd = f'dism /online /export-driver /destination:"{backup_path}"'
+            startupinfo = subprocess.STARTUPINFO(); startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            creation = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, startupinfo=startupinfo, creationflags=creation)
+            self._driver_proc = proc
+
+            # Chờ tiến trình hoàn thành, cập nhật tiến trình giả lập
+            fake_val = 0
+            while True:
+                ret = proc.poll()
+                if getattr(self, '_driver_cancel_requested', False):
+                    self._terminate_driver_proc()
+                    break
+                if ret is not None:
+                    break
+                if fake_val < 90:
+                    fake_val = min(90, fake_val + 1)
+                    self.schedule_on_main_thread(self._update_main_progress, fake_val)
+                time.sleep(0.2)
+
+            if getattr(self, '_driver_cancel_requested', False):
+                self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_driver_cancelled', parent=self.root)
+            elif proc.returncode == 0:
+                self._update_main_progress(100)
+                self._show_message('title_info', 'msg_driver_backup_complete', path=backup_path, parent=self.root)
+                try:
+                    os.startfile(backup_path)
+                except Exception:
+                    pass
+            else:
+                output = proc.stdout.read() if proc.stdout else ''
+                self._update_main_progress(100)
+                self._show_message('title_error', 'msg_driver_backup_fail', msg_type='error', e=output, parent=self.root)
+        except Exception as e:
+            self._update_main_progress(100)
+            self._show_message('title_error', 'msg_driver_backup_fail', msg_type='error', e=str(e), parent=self.root)
+        finally:
+            self.update_status('status_ready')
+            self._hide_main_progress()
+            self._driver_proc = None
+            self._driver_cancel_requested = False
+            self.schedule_on_main_thread(self._set_driver_running_state, False)
 
     def open_bloatware_window(self):
         if self.bloat_win and self.bloat_win.winfo_exists(): self.bloat_win.focus(); return
@@ -452,15 +724,18 @@ class WindowsUtilityTool:
         self.bloat_tree.pack(side='left', fill='both', expand=True)
         scroll.pack(side='right', fill='y')
         
-        btn_style_small = {'font': ('Arial', 11, 'bold'), 'width': 15, 'height': 2}
-        self.bloat_load_btn = tk.Button(button_frame, bg='#3498db', fg='white', command=self.load_bloatware_list, **btn_style_small)
-        self.bloat_load_btn.pack(side='left', padx=(0, 10))
-        self.bloat_select_all_btn = tk.Button(button_frame, bg='#27ae60', fg='white', command=self.select_all_bloatware, **btn_style_small)
-        self.bloat_select_all_btn.pack(side='left', padx=(0, 10))
-        self.bloat_deselect_all_btn = tk.Button(button_frame, bg='#95a5a6', fg='white', command=self.deselect_all_bloatware, **btn_style_small)
-        self.bloat_deselect_all_btn.pack(side='left', padx=(0, 10))
-        self.bloat_remove_btn = tk.Button(button_frame, bg='#e74c3c', fg='white', command=self.remove_selected_bloatware, **btn_style_small)
-        self.bloat_remove_btn.pack(side='right', padx=(10, 0))
+        btn_pady = 8
+        self.bloat_load_btn = ttkb.Button(button_frame, command=self.load_bloatware_list, bootstyle='primary')
+        self.bloat_load_btn.pack(side='left', padx=(0, 10), fill='x', expand=True)
+        
+        self.bloat_select_all_btn = ttkb.Button(button_frame, command=self.select_all_bloatware, bootstyle='success')
+        self.bloat_select_all_btn.pack(side='left', padx=(0, 10), fill='x', expand=True)
+
+        self.bloat_deselect_all_btn = ttkb.Button(button_frame, command=self.deselect_all_bloatware, bootstyle='secondary')
+        self.bloat_deselect_all_btn.pack(side='left', padx=(0, 10), fill='x', expand=True)
+
+        self.bloat_remove_btn = ttkb.Button(button_frame, command=self.remove_selected_bloatware, bootstyle='danger')
+        self.bloat_remove_btn.pack(side='right', padx=(10, 0), fill='x', expand=True)
         
         s_frame = tk.Frame(self.bloat_win, bg='#34495e', height=30)
         s_frame.pack(fill='x', side='bottom')
@@ -469,6 +744,8 @@ class WindowsUtilityTool:
         tk.Label(s_frame, textvariable=self.bloat_status_var, font=('Arial', 9), fg='white', bg='#34495e').pack(side='left', padx=10, pady=5, fill='x', expand=True)
         # Progress bar for bloatware deletion (show only when running)
         self.bloat_progress = ttk.Progressbar(s_frame, length=220, mode='determinate')
+        self.bloat_progress_var = tk.StringVar(value="")
+        self.bloat_progress_label = tk.Label(s_frame, textvariable=self.bloat_progress_var, font=('Arial', 9), fg='white', bg='#34495e')
         self._bloat_progress_visible = False
         
         self.bloat_tree.bind('<Button-1>', self.toggle_bloatware_selection)
@@ -490,20 +767,29 @@ class WindowsUtilityTool:
         self.bloat_status_var.set(lang['status_ready'])
 
     def load_bloatware_list(self):
-        self.update_status('status_loading_bloatware'); self.bloat_win.update()
-        for i in self.bloat_tree.get_children(): self.bloat_tree.delete(i)
+        self.schedule_on_main_thread(self.update_status, 'status_loading_bloatware')
+        apps_to_add = []
         try:
-            cmd = 'Get-AppxPackage | Where-Object {$_.NonRemovable -eq $false} | Select-Object Name,PackageFullName,Version,InstallLocation | Sort-Object Name | Format-List'
-            result = self.run_command(f'powershell -Command "{cmd}"')
-            if not result or "Error" in result: raise Exception(result)
-            app_count = 0
-            for block in result.strip().split('\n\n'):
-                props = {k.strip(): v.strip() for k, v in (l.split(':', 1) for l in block.split('\n') if ':' in l)}
-                if all(k in props for k in ['Name', 'PackageFullName', 'Version']):
-                    self.bloat_tree.insert('', 'end', values=('☐', props['Name'], props['PackageFullName'], props['Version'], props.get('InstallLocation', 'N/A')))
-                    app_count += 1
-            self.update_status('status_ready')
-        except Exception as e: self._show_message('title_error', 'msg_bloat_load_fail', msg_type='error', parent=self.bloat_win, e=str(e))
+            cmd = 'Get-AppxPackage | Where-Object {$_.NonRemovable -eq $false} | Select-Object Name,PackageFullName,Version,InstallLocation | Sort-Object Name | ConvertTo-Json'
+            result = self.run_command(f'powershell -ExecutionPolicy Bypass -Command "{cmd}"')
+            if not result or "Error" in result:
+                raise Exception(result)
+            apps = json.loads(result)
+            if isinstance(apps, dict):
+                apps = [apps]
+            for app in apps:
+                apps_to_add.append(('☐', app.get('Name', 'N/A'), app.get('PackageFullName', 'N/A'), app.get('Version', 'N/A'), app.get('InstallLocation', 'N/A')))
+            def update_gui():
+                for i in self.bloat_tree.get_children():
+                    self.bloat_tree.delete(i)
+                for app_data in apps_to_add:
+                    self.bloat_tree.insert('', 'end', values=app_data)
+                self.update_status('status_ready')
+            self.schedule_on_main_thread(update_gui)
+        except Exception as e:
+            self.schedule_on_main_thread(self._show_message, 'title_error', 'msg_bloat_load_fail', msg_type='error', parent=self.bloat_win, e=str(e))
+            self.schedule_on_main_thread(self.update_status, 'status_ready')
+
     def toggle_bloatware_selection(self, event):
         item_id = self.bloat_tree.identify_row(event.y)
         if not item_id: return
@@ -564,8 +850,13 @@ class WindowsUtilityTool:
             dlg.destroy()
         def on_cancel():
             dlg.destroy()
-        tk.Button(btn_frame, text=lang['btn_confirm'], bg='#e74c3c', fg='white', width=12, command=on_ok).pack(side='right', padx=5)
-        tk.Button(btn_frame, text=lang['btn_cancel'], bg='#95a5a6', fg='white', width=12, command=on_cancel).pack(side='right', padx=5)
+            
+        ok_btn = ttkb.Button(btn_frame, text=lang['btn_confirm'], command=on_ok, bootstyle='danger')
+        ok_btn.pack(side='right', padx=5)
+
+        cancel_btn = ttkb.Button(btn_frame, text=lang['btn_cancel'], command=on_cancel, bootstyle='secondary')
+        cancel_btn.pack(side='right', padx=5)
+        
         dlg.bind('<Return>', lambda e: on_ok())
         dlg.bind('<Escape>', lambda e: on_cancel())
         self._center_window(dlg, 420, 320)
@@ -574,26 +865,30 @@ class WindowsUtilityTool:
     def _remove_bloatware_task(self, items):
         s_count = 0; failed = []
         # Show progress bar
-        self._show_bloat_progress(len(items))
+        self.schedule_on_main_thread(self._show_bloat_progress, len(items))
         for i, (pkg, name, item_id) in enumerate(items, 1):
-            self.update_status('status_removing_bloatware', i=i, total=len(items), name=name)
+            self.schedule_on_main_thread(self.update_status, 'status_removing_bloatware', i=i, total=len(items), name=name)
             try:
                 cmd = f'Remove-AppxPackage -Package "{pkg}" -AllUsers'; result = self.run_command(f'powershell -Command "{cmd}"')
                 if "Error" in result: raise Exception(result)
-                self.bloat_tree.delete(item_id); s_count += 1
+                self.schedule_on_main_thread(self.bloat_tree.delete, item_id); s_count += 1
             except Exception as e: failed.append(f'• {name}: {e}')
-            self._update_bloat_progress(i)
-        msg_val = '\n'.join(failed) if failed else ""
-        self._show_message('title_info', f'Removed: {s_count}/{len(items)}\n\n{msg_val}', parent=self.bloat_win)
-        self.update_status('status_ready')
-        self._hide_bloat_progress()
+            self.schedule_on_main_thread(self._update_bloat_progress, i)
+        
+        errors_str = '\n'.join(failed) if failed else "None"
+        self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_bloat_remove_complete', parent=self.bloat_win, s=s_count, t=len(items), errors=errors_str)
+        self.schedule_on_main_thread(self.update_status, 'status_ready')
+        self.schedule_on_main_thread(self._hide_bloat_progress)
 
     # Progress helpers (bloatware window)
     def _show_bloat_progress(self, maximum=100):
         try:
             self.bloat_progress['maximum'] = maximum
             self.bloat_progress['value'] = 0
+            self.bloat_progress_var.set("0%")
             if not getattr(self, '_bloat_progress_visible', False):
+                # Pack label first to keep it at the far right
+                self.bloat_progress_label.pack(side='right', padx=(10, 12))
                 self.bloat_progress.pack(side='right', padx=10)
                 self._bloat_progress_visible = True
             if self.bloat_win and self.bloat_win.winfo_exists():
@@ -604,6 +899,12 @@ class WindowsUtilityTool:
     def _update_bloat_progress(self, value):
         try:
             self.bloat_progress['value'] = value
+            try:
+                maximum = float(self.bloat_progress['maximum']) or 1.0
+            except Exception:
+                maximum = 1.0
+            pct = int((float(value) / maximum) * 100)
+            self.bloat_progress_var.set(f"{pct}%")
             if self.bloat_win and self.bloat_win.winfo_exists():
                 self.bloat_win.update_idletasks()
         except Exception:
@@ -613,7 +914,9 @@ class WindowsUtilityTool:
         try:
             if getattr(self, '_bloat_progress_visible', False):
                 self.bloat_progress.pack_forget()
+                self.bloat_progress_label.pack_forget()
                 self._bloat_progress_visible = False
+            self.bloat_progress_var.set("")
             if self.bloat_win and self.bloat_win.winfo_exists():
                 self.bloat_win.update_idletasks()
         except Exception:
@@ -629,18 +932,34 @@ class WindowsUtilityTool:
         cols = ('Name', 'Type', 'IP', 'MAC', 'DNS'); self.net_tree = ttk.Treeview(info_frame, columns=cols, show='headings', height=8)
         self.net_tree.column('Name', width=150, anchor='w'); self.net_tree.column('Type', width=80, anchor='w'); self.net_tree.column('IP', width=120, anchor='w'); self.net_tree.column('MAC', width=150, anchor='w'); self.net_tree.column('DNS', width=250, anchor='w')
         self.net_tree.pack(fill='x', expand=True)
-        self.net_refresh_btn = tk.Button(info_frame, command=lambda: self.run_in_thread(self.refresh_network_info)); self.net_refresh_btn.pack(pady=5)
+        
+        self.net_refresh_btn = ttkb.Button(info_frame, command=lambda: self.run_in_thread(self.refresh_network_info), bootstyle='primary')
+        self.net_refresh_btn.pack(pady=5, padx=5, fill='x')
         
         actions_frame = ttk.LabelFrame(self.net_win, padding=(10, 10)); actions_frame.pack(fill='x', padx=10, pady=10)
+        
         r1 = tk.Frame(actions_frame); r1.pack(fill='x', pady=5)
-        self.net_flush_dns_btn = tk.Button(r1, command=self.flush_dns); self.net_flush_dns_btn.pack(side='left', padx=5)
-        self.net_reset_tcp_btn = tk.Button(r1, command=self.reset_tcp_ip); self.net_reset_tcp_btn.pack(side='left', padx=5)
-        self.net_restore_wifi_btn = tk.Button(r1, command=self.restore_wifi); self.net_restore_wifi_btn.pack(side='left', padx=5)
+        r1.columnconfigure(0, weight=1); r1.columnconfigure(1, weight=1); r1.columnconfigure(2, weight=1)
+        self.net_flush_dns_btn = ttkb.Button(r1, command=self.flush_dns, bootstyle='secondary')
+        self.net_flush_dns_btn.grid(row=0, column=0, sticky='ew', padx=(0, 3))
+        
+        self.net_reset_tcp_btn = ttkb.Button(r1, command=self.reset_tcp_ip, bootstyle='secondary')
+        self.net_reset_tcp_btn.grid(row=0, column=1, sticky='ew', padx=3)
+
+        self.net_restore_wifi_btn = ttkb.Button(r1, command=self.restore_wifi, bootstyle='secondary')
+        self.net_restore_wifi_btn.grid(row=0, column=2, sticky='ew', padx=(3, 0))
         
         dns_frame = ttk.LabelFrame(actions_frame, padding=(10, 5)); dns_frame.pack(fill='x', pady=10)
-        self.net_google_dns_btn = tk.Button(dns_frame, text="Google DNS", command=lambda: self.change_dns("8.8.8.8", "8.8.4.4")); self.net_google_dns_btn.pack(side='left', padx=5)
-        self.net_cf_dns_btn = tk.Button(dns_frame, text="Cloudflare DNS", command=lambda: self.change_dns("1.1.1.1", "1.0.0.1")); self.net_cf_dns_btn.pack(side='left', padx=5)
-        self.net_clear_dns_btn = tk.Button(dns_frame, command=lambda: self.change_dns()); self.net_clear_dns_btn.pack(side='left', padx=5)
+        dns_frame.columnconfigure(0, weight=1); dns_frame.columnconfigure(1, weight=1); dns_frame.columnconfigure(2, weight=1)
+
+        self.net_google_dns_btn = ttkb.Button(dns_frame, text="Google DNS", command=lambda: self.change_dns("8.8.8.8", "8.8.4.4"), bootstyle='primary')
+        self.net_google_dns_btn.grid(row=0, column=0, sticky='ew', padx=(0,3))
+
+        self.net_cf_dns_btn = ttkb.Button(dns_frame, text="Cloudflare DNS", command=lambda: self.change_dns("1.1.1.1", "1.0.0.1"), bootstyle='warning')
+        self.net_cf_dns_btn.grid(row=0, column=1, sticky='ew', padx=3)
+
+        self.net_clear_dns_btn = ttkb.Button(dns_frame, command=lambda: self.change_dns(), bootstyle='danger')
+        self.net_clear_dns_btn.grid(row=0, column=2, sticky='ew', padx=(3,0))
         
         self._update_network_window_lang(); self.run_in_thread(self.refresh_network_info)
         self._center_window(self.net_win, 980, 500)
@@ -668,11 +987,11 @@ class WindowsUtilityTool:
             if "none" in result.lower(): return "Automatic (DHCP)"
             servers = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', result)
             return ", ".join(servers) if servers else "None"
-        except: return "Cannot fetch"
+        except Exception: return "Cannot fetch"
     def refresh_network_info(self):
-        self.update_status('status_loading_net')
+        self.schedule_on_main_thread(self.update_status, 'status_loading_net')
         try:
-            for i in self.net_tree.get_children(): self.net_tree.delete(i)
+            ifaces_data = []
             addrs = psutil.net_if_addrs(); stats = psutil.net_if_stats()
             for intf, addr_list in addrs.items():
                 ip = mac = ""; is_up = "Up" if stats.get(intf) and stats[intf].isup else "Down"
@@ -680,14 +999,28 @@ class WindowsUtilityTool:
                     if addr.family == psutil.AF_LINK: mac = addr.address
                     if addr.family == 2: ip = addr.address
                 dns = self._get_dns_servers(intf)
-                self.net_tree.insert("", "end", values=(intf, is_up, ip, mac, dns))
-        except Exception as e: self._show_message('title_error', 'msg_net_fetch_fail', msg_type='error', parent=self.net_win, e=str(e))
-        finally: self.update_status('status_ready')
+                ifaces_data.append((intf, is_up, ip, mac, dns))
+            def update_gui():
+                try:
+                    focused_item = self.net_tree.focus()
+                    for i in self.net_tree.get_children(): self.net_tree.delete(i)
+                    for data in ifaces_data:
+                        self.net_tree.insert("", "end", values=data)
+                    if focused_item and self.net_tree.exists(focused_item):
+                        self.net_tree.focus(focused_item)
+                        self.net_tree.selection_set(focused_item)
+                finally:
+                    self.update_status('status_ready')
+            self.schedule_on_main_thread(update_gui)
+        except Exception as e:
+            self.schedule_on_main_thread(self._show_message, 'title_error', 'msg_net_fetch_fail', msg_type='error', parent=self.net_win, e=str(e))
+            self.schedule_on_main_thread(self.update_status, 'status_ready')
+                
     def _has_wireless_interface(self):
         try:
             result = self.run_command("netsh wlan show interfaces")
             return not ("no wireless interface" in result or "không có giao diện" in result)
-        except: return False
+        except Exception: return False
     def _ensure_wlansvc_running(self):
         try:
             svc = psutil.win_service_get('wlansvc')
@@ -709,24 +1042,28 @@ class WindowsUtilityTool:
         if not self._ensure_wlansvc_running(): self.update_status('status_ready'); return
         s_count = 0
         for i, f in enumerate(files, 1):
-            self.update_status('status_restoring_wifi', i=i, total=len(files))
+            self.schedule_on_main_thread(self.update_status, 'status_restoring_wifi', i=i, total=len(files))
             result = self.run_command(f'netsh wlan add profile filename="{f}" user=all')
             if "is added on interface" in result.lower() or "được thêm trên giao diện" in result.lower(): s_count += 1
-        self._show_message('title_info', 'msg_wifi_restore_complete', s=s_count, t=len(files), parent=self.net_win)
+        self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_wifi_restore_complete', s=s_count, t=len(files), parent=self.net_win)
         self.update_status('status_ready')
     def flush_dns(self):
         self.update_status('status_flushing_dns'); self.run_in_thread(self._flush_dns_task)
     def _flush_dns_task(self):
         result = self.run_command("ipconfig /flushdns")
-        if "successfully flushed" in result.lower() or "đã xóa thành công" in result.lower(): self._show_message('title_info', 'msg_dns_flush_success', parent=self.net_win)
-        else: self._show_message('title_error', 'msg_dns_flush_fail', msg_type='error', parent=self.net_win)
+        if "successfully flushed" in result.lower() or "đã xóa thành công" in result.lower():
+            self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_dns_flush_success', parent=self.net_win)
+        else:
+            self.schedule_on_main_thread(self._show_message, 'title_error', 'msg_dns_flush_fail', msg_type='error', parent=self.net_win)
         self.update_status('status_ready')
     def reset_tcp_ip(self):
         self.update_status('status_resettiing_tcp'); self.run_in_thread(self._reset_tcp_ip_task)
     def _reset_tcp_ip_task(self):
         result = self.run_command("netsh int ip reset")
-        if "resetting" in result.lower() and "ok" in result.lower(): self._show_message('title_info', 'msg_reset_tcp_success', parent=self.net_win)
-        else: self._show_message('title_error', 'msg_reset_tcp_fail', msg_type='error', parent=self.net_win)
+        if "resetting" in result.lower() and "ok" in result.lower():
+            self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_reset_tcp_success', parent=self.net_win)
+        else:
+            self.schedule_on_main_thread(self._show_message, 'title_error', 'msg_reset_tcp_fail', msg_type='error', parent=self.net_win)
         self.update_status('status_ready')
     def change_dns(self, dns1=None, dns2=None):
         item = self.net_tree.focus()
@@ -738,19 +1075,34 @@ class WindowsUtilityTool:
         else: cmd = f'netsh interface ipv4 set dnsserver name="{iface}" static {dns1} primary'
         res1 = self.run_command(cmd)
         if dns1 and dns2: self.run_command(f'netsh interface ipv4 add dnsserver name="{iface}" {dns2} index=2')
-        if not res1.strip(): self._show_message('title_info', 'msg_dns_change_success', parent=self.net_win, iface=iface)
-        else: self._show_message('title_error', 'msg_dns_change_fail', msg_type='error', parent=self.net_win, iface=iface)
-        self.run_in_thread(self.refresh_network_info); self.update_status('status_ready')
+        
+        success = not res1.strip() or "The requested operation requires elevation" not in res1
+        
+        if success:
+            self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_dns_change_success', parent=self.net_win, iface=iface)
+        else:
+            self.schedule_on_main_thread(self._show_message, 'title_error', 'msg_dns_change_fail', msg_type='error', parent=self.net_win, iface=iface)
+        
+        self.run_in_thread(self.refresh_network_info)
+        self.update_status('status_ready')
+
     def backup_wifi(self):
-        if not self._has_wireless_interface(): self._show_message('title_warning', 'msg_wifi_no_card', msg_type='warning'); return
-        self.update_status('status_backing_up_wifi'); self.run_in_thread(self._backup_wifi_task)
-    def _backup_wifi_task(self):
+        if not self._has_wireless_interface():
+            self._show_message('title_warning', 'msg_wifi_no_card', msg_type='warning')
+            return
+        backup_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_wifi_backup_dir'])
+        if not backup_dir:
+            return
+        self.update_status('status_backing_up_wifi')
+        self.run_in_thread(self._backup_wifi_task, backup_dir)
+
+    def _backup_wifi_task(self, backup_dir):
         if not self._ensure_wlansvc_running():
-            self.update_status('status_ready')
+            self.schedule_on_main_thread(self.update_status, 'status_ready')
             return
         logs = []
         try:
-            self.update_status('status_loading_wifi_profiles')
+            self.schedule_on_main_thread(self.update_status, 'status_loading_wifi_profiles')
             profiles_res = self.run_command("netsh wlan show profiles")
             profiles = []
             for line in profiles_res.split('\n'):
@@ -759,13 +1111,9 @@ class WindowsUtilityTool:
                     if len(parts) == 2:
                         profiles.append(parts[1].strip())
             if not profiles:
-                self._show_message('title_warning', 'msg_wifi_no_profile_to_backup', msg_type='warning')
+                self.schedule_on_main_thread(self._show_message, 'title_warning', 'msg_wifi_no_profile_to_backup', msg_type='warning')
                 return
-            # Configure and show main progress bar
-            self._show_main_progress(len(profiles))
-            backup_dir = filedialog.askdirectory(title=LANGUAGES[self.current_lang]['title_wifi_backup_dir'])
-            if not backup_dir:
-                return
+            self.schedule_on_main_thread(self._show_main_progress, len(profiles))
             base_dir = Path(backup_dir)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_path = base_dir / f"WiFi_Backup_{timestamp}"
@@ -773,35 +1121,54 @@ class WindowsUtilityTool:
             wifi_data = []
             s_count = 0
             for i, p in enumerate(profiles, 1):
-                self.update_status('status_backing_up_wifi', i=i, total=len(profiles), profile=p)
+                self.schedule_on_main_thread(self.update_status, 'status_backing_up_wifi', i=i, total=len(profiles), profile=p)
+                pwd = "N/A"
                 try:
-                    self.run_command(f'netsh wlan export profile name="{p}" folder="{backup_path}" key=clear')
-                    res_show = self.run_command(f'netsh wlan show profile name="{p}" key=clear')
-                    pwd = "N/A"
-                    for res_l in res_show.split('\n'):
-                        if "Key Content" in res_l or "Nội dung Khóa" in res_l:
-                            pwd = res_l.split(':', 1)[1].strip()
-                            break
+                    export_output = self.run_command(f'netsh wlan export profile name="{p}" folder="{backup_path}" key=clear')
+                    match = re.search(r'file "(.*?)"', export_output)
+                    if match:
+                        xml_file_path = Path(match.group(1))
+                        if xml_file_path.exists():
+                            try:
+                                tree = ET.parse(xml_file_path)
+                                root = tree.getroot()
+                                ns = {'wlan': 'http://www.microsoft.com/networking/WLAN/profile/v1'}
+                                key_material = root.find('.//wlan:MSM/wlan:security/wlan:sharedKey/wlan:keyMaterial', ns)
+                                if key_material is not None and key_material.text:
+                                    pwd = key_material.text
+                                else:
+                                    pwd = "N/A (No Key Material)"
+                            except ET.ParseError:
+                                pwd = "N/A (XML Parse Error)"
+                        else:
+                            pwd = "N/A (XML file not found)"
+                    else:
+                        res_show = self.run_command(f'netsh wlan show profile name="{p}" key=clear')
+                        for res_l in res_show.split('\n'):
+                            if "Key Content" in res_l or "Nội dung Khóa" in res_l:
+                                pwd = res_l.split(':', 1)[1].strip()
+                                break
                     wifi_data.append(f"SSID: {p} : {pwd}")
                     s_count += 1
                 except Exception as e:
                     logs.append(f"Error with profile '{p}': {e}")
-                self._update_main_progress(i)
+                self.schedule_on_main_thread(self._update_main_progress, i)
             if wifi_data:
                 with open(backup_path / "WiFi_Passwords.txt", "w", encoding="utf-8") as f:
                     f.write("\n".join(wifi_data))
-            self._show_message('title_info', 'msg_wifi_backup_complete', s=s_count, t=len(profiles), path=backup_path, parent=self.root)
+            self.schedule_on_main_thread(self._show_message, 'title_info', 'msg_wifi_backup_complete', s=s_count, t=len(profiles), path=backup_path, parent=self.root)
             os.startfile(backup_path)
         except Exception as e:
             log_file = Path.home() / "windows_utility_tool_wifi_log.txt"
             logs.append(f"Critical error: {e}")
             with open(log_file, "w", encoding="utf-8") as log:
                 log.write("\n".join(logs))
-            title = LANGUAGES[self.current_lang]['title_error']
-            messagebox.showerror(title, f'A critical error occurred. See log file for details:\n{log_file}')
+            def show_error():
+                self._show_message('title_error', 'msg_critical_error_log', msg_type='error', path=log_file)
+            self.schedule_on_main_thread(show_error)
         finally:
-            self.update_status('status_ready')
-            self._hide_main_progress()
+            self.schedule_on_main_thread(self.update_status, 'status_ready')
+            self.schedule_on_main_thread(self._hide_main_progress)
 
     def set_shutdown(self):
         """Hẹn giờ tắt máy theo khoảng thời gian và ép buộc đóng ứng dụng."""
@@ -899,7 +1266,7 @@ def main():
                     messagebox.showerror("Admin Rights Required", f"Could not request administrator privileges.\nError: {e}")
                 return
             set_current_process_app_id("Doctoten.WindowsUtilityTool")
-            root = tk.Tk()
+            root = ttkb.Window(themename='flatly')
             app = WindowsUtilityTool(root)
             root.mainloop()
     except RuntimeError:
