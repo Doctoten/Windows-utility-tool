@@ -2,3 +2,6 @@
 
 # Required for network information (IP, MAC, etc.)
 psutil
+
+# Required for modern UI styling
+ttkbootstrap
