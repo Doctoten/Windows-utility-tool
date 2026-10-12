@@ -4,6 +4,7 @@
 ![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-0078D6?style=for-the-badge)
 ![Native C](https://img.shields.io/badge/native-C11%20%2B%20Win32-555555?style=for-the-badge)
 ![Portable](https://img.shields.io/badge/portable-EXE-2D9F2D?style=for-the-badge)
+[![MIT License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
 **[English](#english) | [Tiếng Việt](#tieng-viet)**
 
@@ -216,6 +217,10 @@ Report problems or propose features through [GitHub Issues](https://github.com/D
 
 Code and translation improvements are welcome. For system-changing code, document the affected Windows versions, the confirmation shown to users, and validation performed. See [TESTING.md](TESTING.md).
 
+### License
+
+This project is released under the [MIT License](LICENSE).
+
 Developed by **Doctoten**. [Back to usage](#usage-en) · [Tiếng Việt](#tieng-viet)
 
 ---
@@ -426,5 +431,9 @@ Source native và tài nguyên nằm trong `src/`; tài liệu chính sách ở 
 Báo lỗi hoặc đề xuất tính năng qua [GitHub Issues](https://github.com/Doctoten/Windows-utility-tool/issues). Ghi rõ phiên bản ứng dụng, phiên bản/build Windows, các bước tái hiện và mã lỗi liên quan. Xóa thông tin cá nhân trong nhật ký; không đính kèm mật khẩu WiFi hoặc file sao lưu riêng tư.
 
 Hoan nghênh đóng góp mã nguồn và bản dịch. Với mã thay đổi hệ thống, mô tả phiên bản Windows bị ảnh hưởng, nội dung xác nhận cho người dùng và các bước kiểm tra đã thực hiện. Xem [TESTING.md](TESTING.md).
+
+### Giấy phép
+
+Dự án được phát hành theo [MIT License](LICENSE).
 
 Phát triển bởi **Doctoten**. [Về cách sử dụng](#usage-vi) · [English](#english)
