@@ -93,8 +93,9 @@ Availability depends on Windows edition, build, installed components, and hardwa
 
 - **Create a registry backup (Recommended)** — saves SYSTEM, SOFTWARE and the current account's HKCU in a private backup folder.
 - **Create a system restore point (Recommended)** — requests a Windows restore point before the selected configuration changes.
-- Both recovery options start checked in the confirmation; nothing runs until you agree. A selected protection failure stops the requested changes.
-- Available before optimizer apply/restore, optional-app removal, DNS changes, TCP/IP reset and WiFi import. Open backups or Windows System Protection from the sidebar.
+- Both recovery options are clearly labeled at the top of **Windows Setup** and start checked. They run only after you confirm applying or restoring Windows settings there. A selected protection failure stops the requested changes.
+- Windows Setup groups settings into Privacy, AI, Start & Search, System, Taskbar and File Explorer cards, with search and a layout that adapts to the window size. Optimization choices start unchecked.
+- DNS, WiFi and standalone optional-app removal keep their own confirmations without these recovery options. Open backups or Windows System Protection from the sidebar.
 
 System Protection must already be enabled. Windows may reuse a recent restore point under its frequency policy. See [recovery, themes and system information](docs/recovery-and-system-info.md) for backup scope and limitations.
 
@@ -303,8 +304,9 @@ Khả năng hỗ trợ phụ thuộc phiên bản Windows, build, thành phần 
 
 - **Tạo bản sao Registry (Khuyên dùng)** — lưu SYSTEM, SOFTWARE và HKCU của tài khoản hiện tại vào thư mục sao lưu riêng tư.
 - **Tạo điểm khôi phục hệ thống (Khuyên dùng)** — yêu cầu điểm khôi phục Windows trước các thay đổi cấu hình đã chọn.
-- Hai lựa chọn bảo vệ được đánh dấu sẵn trong hộp xác nhận; chỉ chạy khi bạn đồng ý. Nếu bước bảo vệ đã chọn thất bại, thay đổi sẽ dừng lại.
-- Áp dụng trước khi ghi/khôi phục tối ưu, gỡ ứng dụng, đổi DNS, đặt lại TCP/IP và nhập WiFi. Mở thư mục sao lưu hoặc System Protection từ thanh bên.
+- Hai lựa chọn bảo vệ có nhãn rõ ràng ở đầu **Windows Setup**, được đánh dấu sẵn. Chỉ chạy khi bạn xác nhận áp dụng hoặc khôi phục cài đặt Windows tại đây. Nếu bước bảo vệ đã chọn thất bại, thay đổi sẽ dừng lại.
+- Windows Setup chia thành các thẻ Quyền riêng tư, AI, Start & Search, Hệ thống, Taskbar và File Explorer; có tìm kiếm và bố cục thích ứng kích thước cửa sổ. Các mục tối ưu mặc định bỏ chọn.
+- DNS, WiFi và trang gỡ ứng dụng riêng vẫn có xác nhận, không kèm hai lựa chọn bảo vệ này. Mở thư mục sao lưu hoặc System Protection từ thanh bên.
 
 System Protection phải được bật trước. Windows có thể dùng lại điểm khôi phục gần đây theo chính sách tần suất. Xem [bảo vệ, giao diện và thông tin máy](docs/recovery-and-system-info.md) để biết phạm vi sao lưu và giới hạn.
 

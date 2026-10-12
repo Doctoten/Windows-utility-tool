@@ -14,4 +14,5 @@ void theme_set(int mode, BOOL save);
 void theme_refresh(void);
 void theme_attach(HWND window);
 void theme_control(HWND control);
+void theme_card(HDC dc, const RECT *rect);
 #endif

@@ -380,7 +380,7 @@ void restore_wifi(HWND owner)
         if (error) app_error(owner, tr(L"Chọn file XML WiFi", L"WiFi XML selection"), error);
         free(job->files); free(job); return;
     }
-    if (!app_confirm_system(owner, tr(
+    if (!app_confirm(owner, tr(
             L"Nhập các tệp XML đã chọn vào card WiFi đã chọn?\n\n"
             L"Hồ sơ WiFi trùng tên của người dùng hiện tại sẽ bị thay thế. "
             L"Chỉ nhập tệp từ nguồn bạn tin cậy: hồ sơ có thể tự kết nối mạng.",

@@ -9,7 +9,7 @@ if not exist build-native mkdir build-native
 if not exist dist mkdir dist
 windres --codepage=65001 -I src src/app.rc -O coff -o build-native\app.res.o
 if errorlevel 1 exit /b 1
-gcc -std=c11 -O2 -Wall -Wextra -Werror -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -municode -mwindows src/app.c src/network.c src/backup.c src/optimizer.c src/packages.c src/protection.c src/theme.c src/system_info.c build-native\app.res.o -o dist\win_aio_optimize.exe -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32 -lole32 -luuid -luxtheme -ladvapi32 -liphlpapi -lws2_32 -lwlanapi -lpowrprof -lruntimeobject -ldwmapi -loleaut32 -lwbemuuid -ldxgi -ldxguid -Wl,--dynamicbase,--nxcompat
+gcc -std=c11 -O2 -Wall -Wextra -Werror -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -municode -mwindows src/app.c src/network.c src/backup.c src/optimizer.c src/packages.c src/protection.c src/theme.c src/system_info.c build-native\app.res.o -o dist\win_aio_optimize.exe -luser32 -lgdi32 -lcomctl32 -lcomdlg32 -lshell32 -lshlwapi -lole32 -luuid -luxtheme -ladvapi32 -liphlpapi -lws2_32 -lwlanapi -lpowrprof -lruntimeobject -ldwmapi -loleaut32 -lwbemuuid -ldxgi -ldxguid -Wl,--dynamicbase,--nxcompat
 if errorlevel 1 exit /b 1
 goto package
 :cmakebuild

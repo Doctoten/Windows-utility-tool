@@ -411,7 +411,7 @@ static void request_dns(NetworkWindow *state, BOOL automatic) {
             adapter->name, job->index, family == AF_INET ? L"IPv4" : L"IPv6", adapter->dns,
             job->primary, job->secondary[0] ? job->secondary : tr(L"Không có", L"None"));
     HWND window = state->window;
-    if (!app_confirm_system(window, details) || !IsWindow(window) ||
+    if (!app_confirm(window, details) || !IsWindow(window) ||
         (NetworkWindow *)GetWindowLongPtrW(window, GWLP_USERDATA) != state) { free(job); return; }
     start_network_job(state, job);
 }
@@ -421,7 +421,7 @@ static void request_operation(NetworkWindow *state, NetworkJobKind kind) {
     if (kind == NET_FLUSH && !app_confirm(window,
         tr(L"Xóa bộ nhớ đệm phân giải DNS của Windows?\n\nCấu hình máy chủ DNS được giữ nguyên; các tên miền sẽ được phân giải lại khi cần.",
            L"Clear the Windows DNS resolver cache?\n\nYour DNS server configuration is preserved; names will be resolved again when needed."))) return;
-    if (kind == NET_RESET && !app_confirm_system(window,
+    if (kind == NET_RESET && !app_confirm(window,
         tr(L"Đặt lại IPv4, IPv6 và danh mục Winsock cho TẤT CẢ card mạng?\n\n"
            L"Thao tác có thể xóa IP tĩnh, gateway, DNS và thiết lập mạng/VPN tùy chỉnh, đồng thời ngắt kết nối.\n"
            L"Ghi lại thiết lập hiện tại trước khi tiếp tục. Bạn cần khởi động lại máy tính sau đó.",

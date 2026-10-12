@@ -14,13 +14,13 @@ static void colors(void) {
     SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
     g_theme.high_contrast = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
     g_theme.dark = g_theme.mode == 2 || (g_theme.mode == 0 && !light);
-    g_theme.background = g_theme.dark ? RGB(17, 21, 29) : RGB(242, 245, 250);
-    g_theme.surface = g_theme.dark ? RGB(28, 34, 45) : RGB(255, 255, 255);
-    g_theme.text = g_theme.dark ? RGB(232, 238, 247) : RGB(27, 38, 59);
-    g_theme.muted = g_theme.dark ? RGB(158, 172, 193) : RGB(86, 102, 126);
-    g_theme.accent = g_theme.dark ? RGB(112, 179, 255) : RGB(30, 98, 206);
-    g_theme.border = g_theme.dark ? RGB(60, 72, 91) : RGB(209, 220, 235);
-    g_theme.hover = g_theme.dark ? RGB(42, 57, 79) : RGB(229, 239, 255);
+    g_theme.background = g_theme.dark ? RGB(32, 32, 32) : RGB(243, 243, 243);
+    g_theme.surface = g_theme.dark ? RGB(43, 43, 43) : RGB(255, 255, 255);
+    g_theme.text = g_theme.dark ? RGB(245, 245, 245) : RGB(26, 26, 26);
+    g_theme.muted = g_theme.dark ? RGB(166, 166, 166) : RGB(100, 100, 100);
+    g_theme.accent = g_theme.dark ? RGB(96, 205, 255) : RGB(0, 103, 192);
+    g_theme.border = g_theme.dark ? RGB(66, 66, 66) : RGB(220, 220, 220);
+    g_theme.hover = g_theme.dark ? RGB(55, 55, 55) : RGB(246, 246, 246);
     if (g_theme.high_contrast) {
         g_theme.background = g_theme.surface = GetSysColor(COLOR_WINDOW);
         g_theme.text = GetSysColor(COLOR_WINDOWTEXT);
@@ -35,20 +35,90 @@ static void colors(void) {
     g_theme.surface_brush = CreateSolidBrush(g_theme.surface);
 }
 
+void theme_card(HDC dc, const RECT *rect) {
+    HPEN pen = CreatePen(PS_SOLID, 1, g_theme.border);
+    HGDIOBJ previous_pen = SelectObject(dc, pen), previous_brush = SelectObject(dc, g_theme.surface_brush);
+    RoundRect(dc, rect->left, rect->top, rect->right, rect->bottom, 12, 12);
+    SelectObject(dc, previous_pen); SelectObject(dc, previous_brush); DeleteObject(pen);
+}
+
+static void round_control(HWND window) {
+    wchar_t cls[64] = L""; GetClassNameW(window, cls, ARRAYSIZE(cls));
+    if (lstrcmpiW(cls, L"EDIT") && lstrcmpiW(cls, L"COMBOBOX") && wcscmp(cls, WC_LISTVIEWW)) return;
+    RECT r; GetWindowRect(window, &r);
+    if (r.right <= r.left || r.bottom <= r.top) return;
+    HRGN region = CreateRoundRectRgn(0, 0, r.right-r.left+1, r.bottom-r.top+1, 10, 10);
+    if (region && !SetWindowRgn(window, region, TRUE)) DeleteObject(region);
+}
+
+static void paint_frame(HWND window, HDC dc) {
+    RECT bounds; GetWindowRect(window, &bounds);
+    RECT r = {0, 0, bounds.right-bounds.left, bounds.bottom-bounds.top};
+    LONG_PTR style = GetWindowLongPtrW(window, GWL_STYLE);
+    if ((style & WS_BORDER) || GetPropW(window,L"WAIOFrame")) {
+        RECT edges[] = {{0,0,r.right,2},{0,r.bottom-2,r.right,r.bottom},{0,0,2,r.bottom},{r.right-2,0,r.right,r.bottom}};
+        for (unsigned i=0;i<ARRAYSIZE(edges);++i) FillRect(dc,&edges[i],g_theme.background_brush);
+        HPEN pen=CreatePen(PS_SOLID,1,GetFocus()==window?g_theme.accent:g_theme.border);
+        HGDIOBJ previous_pen=SelectObject(dc,pen),previous_brush=SelectObject(dc,GetStockObject(HOLLOW_BRUSH));
+        RoundRect(dc,0,0,r.right,r.bottom,10,10);
+        SelectObject(dc,previous_pen); SelectObject(dc,previous_brush); DeleteObject(pen);
+    }
+    for (int axis=0;axis<2;++axis) {
+        if (!(style & (axis?WS_HSCROLL:WS_VSCROLL))) continue;
+        SCROLLBARINFO bar={0}; bar.cbSize=sizeof(bar);
+        if (!GetScrollBarInfo(window,axis?OBJID_HSCROLL:OBJID_VSCROLL,&bar) ||
+            (bar.rgstate[0]&STATE_SYSTEM_INVISIBLE)) continue;
+        RECT track=bar.rcScrollBar; OffsetRect(&track,-bounds.left,-bounds.top);
+        FillRect(dc,&track,g_theme.surface_brush);
+        if (bar.xyThumbBottom<=bar.xyThumbTop) continue;
+        RECT thumb=track;
+        if (axis) {
+            thumb.left=track.left+bar.xyThumbTop; thumb.right=track.left+bar.xyThumbBottom;
+            thumb.top+=5; thumb.bottom-=5;
+        } else {
+            thumb.top=track.top+bar.xyThumbTop; thumb.bottom=track.top+bar.xyThumbBottom;
+            thumb.left+=5; thumb.right-=5;
+        }
+        HBRUSH brush=CreateSolidBrush(g_theme.muted);
+        HGDIOBJ old_brush=SelectObject(dc,brush),old_pen=SelectObject(dc,GetStockObject(NULL_PEN));
+        RoundRect(dc,thumb.left,thumb.top,thumb.right,thumb.bottom,6,6);
+        SelectObject(dc,old_brush); SelectObject(dc,old_pen); DeleteObject(brush);
+    }
+}
+
+static void paint_combo(HWND window,HDC dc) {
+    RECT r; GetClientRect(window,&r);
+    FillRect(dc,&r,g_theme.background_brush);
+    theme_card(dc,&r);
+    HGDIOBJ font=SelectObject(dc,(HFONT)SendMessageW(window,WM_GETFONT,0,0));
+    SetBkMode(dc,TRANSPARENT); SetTextColor(dc,IsWindowEnabled(window)?g_theme.text:g_theme.muted);
+    wchar_t text[256]=L"";
+    LRESULT selected=SendMessageW(window,CB_GETCURSEL,0,0);
+    if (selected>=0 && SendMessageW(window,CB_GETLBTEXTLEN,selected,0)<256)
+        SendMessageW(window,CB_GETLBTEXT,selected,(LPARAM)text);
+    RECT label=r; label.left+=10; label.right-=30;
+    DrawTextW(dc,text,-1,&label,DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
+    HPEN pen=CreatePen(PS_SOLID,1,g_theme.text); HGDIOBJ previous=SelectObject(dc,pen);
+    int x=r.right-16,y=r.bottom/2;
+    MoveToEx(dc,x-4,y-2,NULL); LineTo(dc,x,y+2); LineTo(dc,x+4,y-2);
+    SelectObject(dc,previous); DeleteObject(pen); SelectObject(dc,font);
+}
+
 static void paint_button(HWND window, HDC dc) {
     RECT r; GetClientRect(window, &r);
     wchar_t text[512]; GetWindowTextW(window, text, ARRAYSIZE(text));
     DWORD type = (DWORD)GetWindowLongPtrW(window, GWL_STYLE) & BS_TYPEMASK;
     BOOL check = type == BS_AUTOCHECKBOX || type == BS_CHECKBOX;
     BOOL group = type == BS_GROUPBOX;
+    BOOL primary = GetPropW(window, L"WAIOPrimary") && IsWindowEnabled(window);
     LRESULT state = SendMessageW(window, BM_GETSTATE, 0, 0);
     BOOL hover = GetPropW(window, L"WAIOHover") != NULL;
     FillRect(dc, &r, GetPropW(window, L"WAIOCard") ? g_theme.surface_brush : g_theme.background_brush);
     HGDIOBJ font = SelectObject(dc, (HFONT)SendMessageW(window, WM_GETFONT, 0, 0));
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, IsWindowEnabled(window) ? g_theme.text : g_theme.muted);
+    SetTextColor(dc, primary ? (g_theme.high_contrast ? GetSysColor(COLOR_HIGHLIGHTTEXT) : g_theme.dark ? RGB(0, 0, 0) : RGB(255, 255, 255)) : IsWindowEnabled(window) ? g_theme.text : g_theme.muted);
     HPEN pen = CreatePen(PS_SOLID, 1, (state & BST_FOCUS) ? g_theme.accent : g_theme.border);
-    HBRUSH brush = CreateSolidBrush((hover || (state & BST_PUSHED)) ? g_theme.hover : g_theme.surface);
+    HBRUSH brush = CreateSolidBrush(primary ? g_theme.accent : (hover || (state & BST_PUSHED)) ? g_theme.hover : g_theme.surface);
     HGDIOBJ old_pen = SelectObject(dc, pen), old_brush = SelectObject(dc, brush);
     if (check) {
         int y = (r.bottom - 18) / 2;
@@ -58,7 +128,12 @@ static void paint_button(HWND window, HDC dc) {
             SelectObject(dc, tick); MoveToEx(dc, 6, y + 9, NULL); LineTo(dc, 10, y + 13); LineTo(dc, 17, y + 5);
             SelectObject(dc, pen); DeleteObject(tick);
         }
-        r.left += 30; DrawTextW(dc, text, -1, &r, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+        r.left += 30;
+        if (GetWindowLongPtrW(window, GWL_STYLE) & BS_MULTILINE) {
+            RECT measured = r; DrawTextW(dc, text, -1, &measured, DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
+            r.top += max(0, (r.bottom-r.top-(measured.bottom-measured.top))/2);
+            DrawTextW(dc, text, -1, &r, DT_WORDBREAK | DT_NOPREFIX);
+        } else DrawTextW(dc, text, -1, &r, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
     } else if (group) {
         SelectObject(dc, GetStockObject(HOLLOW_BRUSH)); RoundRect(dc, 0, 10, r.right-1, r.bottom-1, 12, 12);
         r.left += 14; r.top = 0; r.bottom = 24;
@@ -90,6 +165,10 @@ static void paint_header(HWND window, HDC dc) {
 void theme_control(HWND control) {
     wchar_t cls[64]; GetClassNameW(control, cls, ARRAYSIZE(cls));
     SetWindowSubclass(control, themed_proc, 1, 0);
+    if (!lstrcmpiW(cls,L"EDIT") || !wcscmp(cls,WC_LISTVIEWW)) {
+        SetPropW(control,L"WAIOFrame",(HANDLE)1);
+    }
+    round_control(control);
     if (!wcscmp(cls, WC_LISTVIEWW)) {
         ListView_SetBkColor(control, g_theme.surface);
         ListView_SetTextBkColor(control, g_theme.surface);
@@ -98,6 +177,9 @@ void theme_control(HWND control) {
         if (header) SetWindowSubclass(header, themed_proc, 1, 0);
     } else if (!lstrcmpiW(cls, L"COMBOBOX")) {
         SetWindowTheme(control, L"", L"");
+    } else if (!lstrcmpiW(cls, L"EDIT")) {
+        SetWindowTheme(control, L"", L"");
+        SendMessageW(control,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
     } else if (!wcscmp(cls, PROGRESS_CLASSW)) {
         SendMessageW(control, PBM_SETBKCOLOR, 0, g_theme.surface);
         SendMessageW(control, PBM_SETBARCOLOR, 0, g_theme.accent);
@@ -149,11 +231,33 @@ static LRESULT CALLBACK themed_proc(HWND window, UINT message, WPARAM wp, LPARAM
     wchar_t cls[64]; GetClassNameW(window, cls, ARRAYSIZE(cls));
     BOOL button = !wcscmp(cls, L"Button");
     switch (message) {
+    case WM_SIZE: {
+        LRESULT result = DefSubclassProc(window, message, wp, lp);
+        round_control(window);
+        return result;
+    }
+    case WM_SETTEXT:
+    case WM_ENABLE:
+    case WM_SETFOCUS:
+    case WM_KILLFOCUS:
+    case BM_SETCHECK:
+    case BM_SETSTATE:
+    case BM_SETSTYLE:
+    case CB_SETCURSEL:
+    case CB_RESETCONTENT:
+    case WM_UPDATEUISTATE: {
+        LRESULT result = DefSubclassProc(window, message, wp, lp);
+        /* Native buttons can paint directly during these messages. Repaint the
+           whole custom surface, including the former label, after they return. */
+        if (button || !lstrcmpiW(cls,L"COMBOBOX")) RedrawWindow(window, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+        return result;
+    }
     case WM_SETTINGCHANGE:
     case WM_SYSCOLORCHANGE:
         if (!(GetWindowLongPtrW(window, GWL_STYLE) & WS_CHILD)) theme_refresh();
         break;
     case WM_ERASEBKGND:
+        if (button) return 1;
         if (!wcsncmp(cls, L"WAIO", 4)) { RECT r; GetClientRect(window, &r); FillRect((HDC)wp, &r, g_theme.background_brush); return 1; }
         break;
     case WM_CTLCOLORSTATIC:
@@ -205,32 +309,42 @@ static LRESULT CALLBACK themed_proc(HWND window, UINT message, WPARAM wp, LPARAM
         }
         if (!lstrcmpiW(cls, L"COMBOBOX")) {
             LRESULT result = DefSubclassProc(window, message, wp, lp);
-            HDC dc = GetDC(window); RECT r; GetClientRect(window, &r);
-            RECT arrow = {r.right-23, 1, r.right-1, r.bottom-1};
-            FillRect(dc, &arrow, g_theme.surface_brush);
-            HPEN pen = CreatePen(PS_SOLID, 1, g_theme.border);
-            HGDIOBJ old_pen = SelectObject(dc, pen), old_brush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
-            Rectangle(dc, 0, 0, r.right, r.bottom);
-            HPEN accent = CreatePen(PS_SOLID, 2, g_theme.text); SelectObject(dc, accent);
-            int x = r.right-13, y = r.bottom/2;
-            MoveToEx(dc, x-4, y-2, NULL); LineTo(dc, x, y+2); LineTo(dc, x+4, y-2);
-            SelectObject(dc, old_pen); SelectObject(dc, old_brush); DeleteObject(pen); DeleteObject(accent); ReleaseDC(window, dc);
+            HDC dc = GetDC(window); paint_combo(window,dc); ReleaseDC(window,dc);
+            return result;
+        }
+        if (GetPropW(window,L"WAIOFrame")) {
+            LRESULT result=DefSubclassProc(window,message,wp,lp);
+            HDC dc=GetWindowDC(window); paint_frame(window,dc); ReleaseDC(window,dc);
             return result;
         }
         break;
     case WM_NCPAINT:
-        if (!lstrcmpiW(cls, L"EDIT") || !wcscmp(cls, WC_LISTVIEWW)) {
+        if (!lstrcmpiW(cls, L"EDIT") || !wcscmp(cls, WC_LISTVIEWW) || !wcscmp(cls,L"WAIO.SetupCards")) {
             LRESULT result = DefSubclassProc(window, message, wp, lp);
-            HDC dc = GetWindowDC(window); RECT r; GetWindowRect(window, &r); OffsetRect(&r, -r.left, -r.top);
-            HBRUSH border = CreateSolidBrush(g_theme.border); FrameRect(dc, &r, border); DeleteObject(border); ReleaseDC(window, dc);
+            HDC dc = GetWindowDC(window); paint_frame(window,dc); ReleaseDC(window, dc);
+            return result;
+        }
+        break;
+    case WM_PRINT:
+        if (button) { paint_button(window,(HDC)wp); return 0; }
+        if (!lstrcmpiW(cls,L"COMBOBOX")) { paint_combo(window,(HDC)wp); return 0; }
+        if (!wcscmp(cls,WC_HEADERW)) { paint_header(window,(HDC)wp); return 0; }
+        if (!lstrcmpiW(cls,L"EDIT") || !wcscmp(cls,WC_LISTVIEWW) || !wcscmp(cls,L"WAIO.SetupCards")) {
+            LRESULT result=DefSubclassProc(window,message,wp,lp);
+            paint_frame(window,(HDC)wp);
             return result;
         }
         break;
     case WM_PRINTCLIENT:
         if (button) { paint_button(window, (HDC)wp); return 0; }
+        if (!lstrcmpiW(cls,L"COMBOBOX")) { paint_combo(window,(HDC)wp); return 0; }
+        if (GetPropW(window,L"WAIOFrame")) {
+            LRESULT result=DefSubclassProc(window,message,wp,lp);
+            paint_frame(window,(HDC)wp); return result;
+        }
         break;
     case WM_NCDESTROY:
-        RemovePropW(window, L"WAIOHover"); RemovePropW(window, L"WAIOCard"); RemoveWindowSubclass(window, themed_proc, 1); break;
+        RemovePropW(window, L"WAIOHover"); RemovePropW(window, L"WAIOCard"); RemovePropW(window, L"WAIOPrimary"); RemovePropW(window,L"WAIOFrame"); RemoveWindowSubclass(window, themed_proc, 1); break;
     }
     return DefSubclassProc(window, message, wp, lp);
 }

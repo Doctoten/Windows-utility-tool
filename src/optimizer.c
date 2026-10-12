@@ -7,6 +7,8 @@
 #include <sddl.h>
 #include <string.h>
 #include <stddef.h>
+#include <windowsx.h>
+#include <shlwapi.h>
 
 /* Policy mappings and support limits: optimizer-notes.md. No scripts are executed. */
 enum { A_DIAGNOSTICS, A_HISTORY, A_TRACKING, A_TIPS, A_EDGE, A_SEARCH,
@@ -136,12 +138,30 @@ static const GUID no_subgroup={0xfea3413e,0x7e05,0x4911,{0x9a,0x71,0x70,0x03,0x3
 typedef struct { DWORD build,ubr; unsigned edition; } Platform;
 typedef struct {
     HWND window,list,detail,status;
-    BOOL bloat,selected[ACTION_COUNT],has_result;
+    HWND viewport,checks[ACTION_COUNT],group_labels[6];
+    HFONT heading_font,section_font;
+    RECT cards[6],rows[ACTION_COUNT];
+    BOOL supported[ACTION_COUNT],visible[ACTION_COUNT];
+    wchar_t reasons[ACTION_COUNT][160];
+    int scroll,content_height,detail_action;
+    BOOL bloat,selected[ACTION_COUNT],has_result,initialized;
     PackageItem packages[PACKAGE_ITEMS_MAX]; unsigned package_count;
     unsigned mode,done,failed,skipped;
     Snapshot *restore;
 } OptimizerWindow;
-enum { ID_LIST=501, ID_APPLY, ID_RESTORE, ID_BLOAT, ID_REFRESH, ID_DETAIL, ID_STATUS, ID_NONE, ID_HEADING };
+enum { ID_LIST=501, ID_APPLY, ID_RESTORE, ID_BLOAT, ID_REFRESH, ID_DETAIL, ID_STATUS, ID_NONE, ID_HEADING,
+       ID_SUBHEADING, ID_SEARCH, ID_REG_BACKUP, ID_RESTORE_POINT, ID_RECOVERY_HEADING, ID_RECOVERY_NOTE, ID_VIEWPORT };
+#define ID_ACTION_BASE 800
+#define WM_SETUP_FOCUS (WM_APP + 10)
+typedef struct { const wchar_t *vi,*en; unsigned actions[5],count; } SetupGroup;
+static const SetupGroup setup_groups[] = {
+    {L"Quyền riêng tư & nội dung", L"Privacy & suggested content", {A_DIAGNOSTICS,A_HISTORY,A_TRACKING,A_TIPS,A_EDGE},5},
+    {L"Trí tuệ nhân tạo", L"AI features", {A_COPILOT,A_RECALL,A_CLICK,A_AI_SERVICE},4},
+    {L"Start & tìm kiếm", L"Start & search", {A_SEARCH,A_STORE_SEARCH},2},
+    {L"Hệ thống", L"System", {A_DRAG,A_STANDBY},2},
+    {L"Thanh tác vụ & màn hình khóa", L"Taskbar & lock screen", {A_WIDGETS,A_LOCK_WIDGETS,A_MEETNOW},3},
+    {L"File Explorer", L"File Explorer", {A_EXTENSIONS,A_3D},2}
+};
 
 static DWORD read_dword(HKEY root,const wchar_t *key,const wchar_t *name,DWORD fallback) {
     DWORD v=fallback,n=sizeof(v);
@@ -534,21 +554,210 @@ static void list_row(HWND list,int index,const wchar_t *label,const wchar_t *sta
     ListView_SetItemText(list,index,1,(wchar_t *)status);
     ListView_SetCheckState(list,index,FALSE);
 }
+static void setup_selection_status(OptimizerWindow *w) {
+    if (w->bloat || w->has_result) return;
+    unsigned count=0;
+    for (unsigned a=0;a<ACTION_COUNT;++a)
+        if (SendMessageW(w->checks[a],BM_GETCHECK,0,0)==BST_CHECKED) ++count;
+    wchar_t text[200];
+    StringCchPrintfW(text,ARRAYSIZE(text),tr(L"%u mục đã chọn • Chưa áp dụng thay đổi",L"%u settings selected • No changes applied"),count);
+    SetWindowTextW(w->status,text);
+}
+static void setup_detail(OptimizerWindow *w,unsigned action) {
+    if (action>=ACTION_COUNT) return;
+    w->detail_action=(int)action;
+    wchar_t text[1600];
+    StringCchPrintfW(text,ARRAYSIZE(text),L"%s\r\n%s",
+        w->reasons[action],tr(details_vi[action],actions[action].detail));
+    SetWindowTextW(w->detail,text);
+}
+static void setup_layout_cards(OptimizerWindow *w) {
+    if (!w->viewport) return;
+    RECT area; GetClientRect(w->viewport,&area);
+    int width=area.right-2, height=area.bottom;
+    if (width<1 || height<1) return;
+    int columns=width>=1080?3:width>=660?2:1;
+    int card_width=(width-(columns-1)*16)/columns;
+    int bottoms[3]={0,0,0};
+    wchar_t search[160]; GetDlgItemTextW(w->window,ID_SEARCH,search,ARRAYSIZE(search));
+    HDC dc=GetDC(w->viewport); HGDIOBJ font=SelectObject(dc,g_font);
+    for (unsigned g=0;g<ARRAYSIZE(setup_groups);++g) {
+        const SetupGroup *group=&setup_groups[g];
+        unsigned count=0;
+        for (unsigned i=0;i<group->count;++i) {
+            unsigned a=group->actions[i];
+            w->visible[a]=!search[0] || StrStrIW(actions[a].en,search) || StrStrIW(actions[a].vi,search) ||
+                StrStrIW(group->en,search) || StrStrIW(group->vi,search);
+            if (w->visible[a]) ++count;
+        }
+        SetRectEmpty(&w->cards[g]);
+        if (!count) continue;
+        int column=0;
+        for (int c=1;c<columns;++c) if (bottoms[c]<bottoms[column]) column=c;
+        int x=column*(card_width+16), y=bottoms[column], row_y=y+48;
+        for (unsigned i=0;i<group->count;++i) {
+            unsigned a=group->actions[i]; if (!w->visible[a]) continue;
+            RECT measure={0,0,card_width-66,0};
+            DrawTextW(dc,tr(actions[a].vi,actions[a].en),-1,&measure,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
+            int row_height=max(38,measure.bottom+16);
+            SetRect(&w->rows[a],x+16,row_y,x+card_width-16,row_y+row_height);
+            row_y+=row_height+4;
+        }
+        SetRect(&w->cards[g],x,y,x+card_width,row_y+12);
+        bottoms[column]=row_y+28;
+    }
+    SelectObject(dc,font); ReleaseDC(w->viewport,dc);
+    w->content_height=0;
+    for (int c=0;c<columns;++c) w->content_height=max(w->content_height,bottoms[c]);
+    w->scroll=max(0,min(w->scroll,max(0,w->content_height-height)));
+    SCROLLINFO scroll={sizeof(scroll),SIF_RANGE|SIF_PAGE|SIF_POS|SIF_DISABLENOSCROLL,0,max(0,w->content_height-1),(UINT)height,w->scroll,0};
+    SetScrollInfo(w->viewport,SB_VERT,&scroll,TRUE);
+    for (unsigned g=0;g<ARRAYSIZE(setup_groups);++g) {
+        RECT card=w->cards[g];
+        ShowWindow(w->group_labels[g],IsRectEmpty(&card)?SW_HIDE:SW_SHOW);
+        if (!IsRectEmpty(&card)) MoveWindow(w->group_labels[g],card.left+16,card.top+16-w->scroll,card.right-card.left-32,26,TRUE);
+    }
+    for (unsigned a=0;a<ACTION_COUNT;++a) {
+        ShowWindow(w->checks[a],w->visible[a]?SW_SHOW:SW_HIDE);
+        if (w->visible[a]) {
+            RECT row=w->rows[a];
+            MoveWindow(w->checks[a],row.left,row.top-w->scroll,row.right-row.left,row.bottom-row.top,TRUE);
+        }
+    }
+    RedrawWindow(w->viewport,NULL,NULL,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+}
+static void setup_scroll(OptimizerWindow *w,int position) {
+    if (position==w->scroll) return;
+    w->scroll=position; setup_layout_cards(w);
+}
+static LRESULT CALLBACK setup_check_proc(HWND window,UINT message,WPARAM wp,LPARAM lp,UINT_PTR id,DWORD_PTR data) {
+    (void)id;
+    if (message==WM_SETFOCUS || message==WM_MOUSEMOVE)
+        SendMessageW(GetParent(window),WM_SETUP_FOCUS,(WPARAM)data,message==WM_SETFOCUS);
+    if (message==WM_MOUSEWHEEL) return SendMessageW(GetParent(window),message,wp,lp);
+    return DefSubclassProc(window,message,wp,lp);
+}
+static LRESULT CALLBACK setup_view_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
+    OptimizerWindow *w=(OptimizerWindow *)GetWindowLongPtrW(hwnd,GWLP_USERDATA);
+    switch (message) {
+    case WM_CREATE:
+        w=((CREATESTRUCTW *)lp)->lpCreateParams;
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,(LONG_PTR)w); theme_attach(hwnd); return 0;
+    case WM_COMMAND: return SendMessageW(GetParent(hwnd),message,wp,lp);
+    case WM_SETUP_FOCUS:
+        if (w && wp<ACTION_COUNT) {
+            if (w->detail_action!=(int)wp) setup_detail(w,(unsigned)wp);
+            if (lp) {
+                RECT area; GetClientRect(hwnd,&area);
+                RECT row=w->rows[wp];
+                if (row.top<w->scroll) setup_scroll(w,row.top-12);
+                else if (row.bottom>w->scroll+area.bottom) setup_scroll(w,row.bottom-area.bottom+12);
+            }
+        } return 0;
+    case WM_MOUSEWHEEL:
+        if (w) setup_scroll(w,w->scroll-GET_WHEEL_DELTA_WPARAM(wp)*60/WHEEL_DELTA);
+        return 0;
+    case WM_MOUSEMOVE:
+        if (w) {
+            POINT point={GET_X_LPARAM(lp),GET_Y_LPARAM(lp)+w->scroll};
+            for (unsigned a=0;a<ACTION_COUNT;++a)
+                if (w->visible[a] && PtInRect(&w->rows[a],point) && w->detail_action!=(int)a) setup_detail(w,a);
+        } return 0;
+    case WM_VSCROLL:
+        if (w) {
+            SCROLLINFO info={0}; info.cbSize=sizeof(info); info.fMask=SIF_ALL; GetScrollInfo(hwnd,SB_VERT,&info);
+            int position=w->scroll;
+            switch (LOWORD(wp)) {
+            case SB_LINEUP: position-=42; break;
+            case SB_LINEDOWN: position+=42; break;
+            case SB_PAGEUP: position-=(int)info.nPage; break;
+            case SB_PAGEDOWN: position+=(int)info.nPage; break;
+            case SB_THUMBTRACK: case SB_THUMBPOSITION: position=info.nTrackPos; break;
+            case SB_TOP: position=0; break;
+            case SB_BOTTOM: position=info.nMax; break;
+            }
+            setup_scroll(w,position);
+        } return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT paint; HDC dc=BeginPaint(hwnd,&paint); RECT area; GetClientRect(hwnd,&area);
+        FillRect(dc,&area,g_theme.background_brush);
+        BOOL any=FALSE;
+        if (w) for (unsigned g=0;g<ARRAYSIZE(setup_groups);++g) {
+            RECT card=w->cards[g]; if (IsRectEmpty(&card)) continue;
+            any=TRUE; OffsetRect(&card,0,-w->scroll); theme_card(dc,&card);
+        }
+        if (!any) {
+            HGDIOBJ font=SelectObject(dc,g_font); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,g_theme.muted);
+            area.top+=36;
+            DrawTextW(dc,tr(L"Không tìm thấy cài đặt phù hợp.",L"No matching settings."),-1,&area,DT_CENTER|DT_TOP|DT_NOPREFIX);
+            SelectObject(dc,font);
+        }
+        EndPaint(hwnd,&paint); return 0;
+    }
+    }
+    return DefWindowProcW(hwnd,message,wp,lp);
+}
+static void optimizer_layout(OptimizerWindow *w) {
+    RECT area; GetClientRect(w->window,&area); int width=area.right,height=area.bottom;
+    MoveWindow(GetDlgItem(w->window,ID_HEADING),24,20,width-48,38,TRUE);
+    MoveWindow(GetDlgItem(w->window,ID_SUBHEADING),24,64,width-48,30,TRUE);
+    MoveWindow(GetDlgItem(w->window,ID_NONE),24,w->bloat?104:240,160,34,TRUE);
+    MoveWindow(GetDlgItem(w->window,ID_REFRESH),196,w->bloat?104:240,110,34,TRUE);
+    if (!w->bloat) {
+        MoveWindow(GetDlgItem(w->window,ID_RECOVERY_HEADING),40,115,width-80,24,TRUE);
+        int half=(width-96)/2;
+        MoveWindow(GetDlgItem(w->window,ID_REG_BACKUP),40,147,half,38,TRUE);
+        MoveWindow(GetDlgItem(w->window,ID_RESTORE_POINT),56+half,147,half,38,TRUE);
+        MoveWindow(GetDlgItem(w->window,ID_RECOVERY_NOTE),40,195,width-80,24,TRUE);
+        MoveWindow(GetDlgItem(w->window,ID_SEARCH),width-324,240,300,34,TRUE);
+        MoveWindow(w->viewport,24,290,width-48,height-458,TRUE);
+        MoveWindow(GetDlgItem(w->window,ID_RESTORE),24,height-55,200,36,TRUE);
+        MoveWindow(GetDlgItem(w->window,ID_BLOAT),236,height-55,200,36,TRUE);
+        setup_layout_cards(w);
+    } else {
+        MoveWindow(w->list,24,154,width-48,height-322,TRUE);
+        ListView_SetColumnWidth(w->list,0,(width-48)/2);
+        ListView_SetColumnWidth(w->list,1,(width-48)/2-24);
+    }
+    MoveWindow(w->detail,24,height-154,width-48,66,TRUE);
+    MoveWindow(w->status,24,height-82,width-48,24,TRUE);
+    MoveWindow(GetDlgItem(w->window,ID_APPLY),width-228,height-55,204,36,TRUE);
+    RedrawWindow(w->window,NULL,NULL,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+}
+static void setup_refresh_support(OptimizerWindow *w) {
+    Platform p=platform();
+    for (unsigned a=0;a<ACTION_COUNT;++a) {
+        const wchar_t *reason;
+        w->supported[a]=action_supported(a,&p,&reason);
+        StringCchCopyW(w->reasons[a],ARRAYSIZE(w->reasons[a]),reason);
+        EnableWindow(w->checks[a],w->supported[a]);
+        if (!w->supported[a]) SendMessageW(w->checks[a],BM_SETCHECK,BST_UNCHECKED,0);
+    }
+}
+static BOOL setup_confirmation(OptimizerWindow *w,const wchar_t *details) {
+    if (w->bloat) return app_confirm(w->window,details);
+    BOOL registry=IsDlgButtonChecked(w->window,ID_REG_BACKUP)==BST_CHECKED;
+    BOOL restore=IsDlgButtonChecked(w->window,ID_RESTORE_POINT)==BST_CHECKED;
+    size_t capacity=wcslen(details)+1024;
+    wchar_t *review=calloc(capacity,sizeof(*review)); if (!review) return FALSE;
+    StringCchPrintfW(review,capacity,tr(
+        L"%s\r\n\r\nBẢO VỆ TRƯỚC KHI TỐI ƯU\r\nTạo bản sao Registry (Khuyên dùng): %s\r\nTạo điểm khôi phục hệ thống (Khuyên dùng): %s\r\n\r\nChỉ chạy các bước đã chọn sau khi bạn đồng ý.",
+        L"%s\r\n\r\nRECOVERY BEFORE OPTIMIZATION\r\nCreate a registry backup (Recommended): %s\r\nCreate a system restore point (Recommended): %s\r\n\r\nSelected steps run only after you agree."),
+        details,registry?tr(L"Có",L"Yes"):tr(L"Không",L"No"),restore?tr(L"Có",L"Yes"):tr(L"Không",L"No"));
+    BOOL accepted=app_confirm_setup(w->window,review,registry,restore);
+    free(review); return accepted;
+}
 static void refresh_list(OptimizerWindow *w) {
     w->has_result=FALSE;
-    ListView_DeleteAllItems(w->list);
+    if (w->bloat) ListView_DeleteAllItems(w->list);
     if (w->bloat) {
-        DWORD err=packages_enumerate(w->packages,ARRAYSIZE(w->packages),&w->package_count,NULL);
+        DWORD err=app_is_smoke_test()?ERROR_SUCCESS:packages_enumerate(w->packages,ARRAYSIZE(w->packages),&w->package_count,NULL);
         if (err) { app_error(w->window,tr(L"Đọc danh sách ứng dụng tùy chọn", L"Read optional packages"),err); return; }
         for (unsigned i=0;i<w->package_count;++i) list_row(w->list,(int)i,w->packages[i].display,w->packages[i].full_name);
         SetWindowTextW(w->status,w->package_count?tr(L"Chưa chọn ứng dụng nào. Chỉ gỡ cho tài khoản hiện tại.",L"No apps selected. Removal affects the current account only."):tr(L"Không tìm thấy ứng dụng tùy chọn trong danh sách.",L"No allowlisted optional apps are installed for this account."));
     } else {
-        Platform p=platform();
-        for (unsigned i=0;i<ACTION_COUNT;++i) {
-            const wchar_t *reason; action_supported(i,&p,&reason);
-            list_row(w->list,(int)i,tr(actions[i].vi,actions[i].en),reason);
-        }
-        SetWindowTextW(w->status,tr(L"Chưa chọn thay đổi nào. Chọn từng mục để xem ảnh hưởng.",L"No changes selected. Select a row to read its effects."));
+        setup_refresh_support(w);
+        setup_selection_status(w);
     }
 }
 static void begin_apply(OptimizerWindow *w) {
@@ -558,7 +767,8 @@ static void begin_apply(OptimizerWindow *w) {
     StringCchCopyW(confirmation,65536,tr(L"Áp dụng CHÍNH XÁC các mục đã chọn dưới đây?\r\n\r\n",L"Apply EXACTLY the selected items below?\r\n\r\n"));
     unsigned selected=0; w->package_count=w->bloat?w->package_count:0;
     for (unsigned i=0;i<(w->bloat?w->package_count:ACTION_COUNT);++i) {
-        BOOL checked=ListView_GetCheckState(w->list,(int)i);
+        BOOL checked=w->bloat?ListView_GetCheckState(w->list,(int)i):
+            SendMessageW(w->checks[i],BM_GETCHECK,0,0)==BST_CHECKED;
         if (w->bloat) w->packages[i].selected=checked; else w->selected[i]=checked;
         if (!checked) continue;
         ++selected;
@@ -590,7 +800,7 @@ static void begin_apply(OptimizerWindow *w) {
         if (w->selected[A_STORE_SEARCH]) StringCchCatW(confirmation,65536,tr(L"Store: chặn quyền đọc/ghi dữ liệu cache store.db cho tài khoản hiện tại; có thể ảnh hưởng gợi ý trong Store. Quyền gốc được sao lưu; không xóa file.\r\n",L"Store: block data reads/writes to the current user's store.db cache; Store recommendations may be affected. Original permissions are saved; no file is deleted.\r\n"));
     }
     if (w->bloat || w->package_count) StringCchCatW(confirmation,65536,tr(L"\r\nGỡ ứng dụng chỉ cho tài khoản hiện tại. DỮ LIỆU ỨNG DỤNG CÓ THỂ BỊ XÓA. Muốn dùng lại, cài từ Microsoft Store; bản sao cài đặt không khôi phục dữ liệu.\r\n",L"\r\nRemove apps for the current account only. APP DATA MAY BE DELETED. Reinstall from Microsoft Store if needed; the settings snapshot cannot restore app data.\r\n"));
-    BOOL accepted=app_confirm_system(w->window,confirmation); free(confirmation);
+    BOOL accepted=setup_confirmation(w,confirmation); free(confirmation);
     if (!accepted) return;
     w->mode=w->bloat?2:0;
     SetWindowTextW(w->status,tr(L"Đang xử lý... Xem nhật ký ở cửa sổ chính.",L"Working... See the main window log."));
@@ -608,133 +818,185 @@ static void begin_restore(OptimizerWindow *w) {
         StringCchPrintfW(line,ARRAYSIZE(line),L"• %s\r\n",tr(actions[a].vi,actions[a].en)); StringCchCatW(text,ARRAYSIZE(text),line);
     }
     StringCchCatW(text,ARRAYSIZE(text),tr(L"\r\nThay thế các giá trị hiện tại bằng trạng thái đã lưu. Không khôi phục ứng dụng, dữ liệu ứng dụng hoặc ảnh chụp Recall. Có thể cần khởi động lại.",L"\r\nReplaces current values with the saved state. Does not restore apps, app data, or Recall snapshots. A restart may be needed."));
-    if (!app_confirm_system(w->window,text)) { free(s); return; }
+    if (!setup_confirmation(w,text)) { free(s); return; }
     w->restore=s; w->mode=1;
     if (!app_start_job(w->window,optimizer_work,w)) { free(s); w->restore=NULL; }
 }
 static void translate_optimizer(OptimizerWindow *w) {
-    SetWindowTextW(w->window,w->bloat?tr(L"Gỡ ứng dụng tùy chọn",L"Remove optional apps"):tr(L"Tối ưu Windows",L"Windows Setup"));
-    SetDlgItemTextW(w->window,ID_HEADING,w->bloat?
-        tr(L"Chọn chính xác ứng dụng cần gỡ. Mặc định không chọn gì.",L"Choose the exact apps to remove. Nothing is selected by default."):
-        tr(L"Tối ưu Windows • Chỉ thay đổi khi bạn chọn và đồng ý.",L"Windows Setup • Changes require your selection and consent."));
-    const wchar_t *columns[]={w->bloat?tr(L"Ứng dụng",L"App"):tr(L"Thay đổi",L"Change"),
-        w->bloat?tr(L"Định danh gói",L"Package identity"):tr(L"Khả năng hỗ trợ",L"Availability")};
-    for (int i=0;i<2;++i) {
-        LVCOLUMNW column={0}; column.mask=LVCF_TEXT; column.pszText=(wchar_t *)columns[i];
-        ListView_SetColumn(w->list,i,&column);
-    }
-    SetDlgItemTextW(w->window,ID_APPLY,tr(L"Áp dụng mục đã chọn",L"Apply selected"));
-    SetDlgItemTextW(w->window,ID_RESTORE,tr(L"Khôi phục cài đặt",L"Restore last settings"));
-    SetDlgItemTextW(w->window,ID_BLOAT,tr(L"Gỡ ứng dụng thừa",L"Remove optional apps"));
+    SetWindowTextW(w->window,w->bloat?tr(L"Ứng dụng tùy chọn — Win AIO Optimize",L"Optional apps — Win AIO Optimize"):L"Windows Setup — Win AIO Optimize");
+    SetDlgItemTextW(w->window,ID_HEADING,w->bloat?tr(L"Ứng dụng tùy chọn",L"Optional apps"):tr(L"Tối ưu Windows",L"Windows Setup"));
+    SetDlgItemTextW(w->window,ID_SUBHEADING,w->bloat?
+        tr(L"Chọn chính xác ứng dụng cần gỡ. Dữ liệu ứng dụng có thể bị xóa.",L"Choose the exact apps to remove. App data may be deleted."):
+        tr(L"Chọn cài đặt theo nhóm. Di chuột hoặc dùng Tab để xem ảnh hưởng.",L"Choose settings by category. Hover or use Tab to read their effects."));
+    SetDlgItemTextW(w->window,ID_APPLY,w->bloat?tr(L"Gỡ mục đã chọn…",L"Remove selected…"):tr(L"Xem lại & áp dụng…",L"Review & apply…"));
+    SetDlgItemTextW(w->window,ID_RESTORE,tr(L"Khôi phục cài đặt…",L"Restore last settings…"));
+    SetDlgItemTextW(w->window,ID_BLOAT,tr(L"Ứng dụng tùy chọn…",L"Optional apps…"));
     SetDlgItemTextW(w->window,ID_NONE,tr(L"Bỏ chọn tất cả",L"Clear selection"));
     SetDlgItemTextW(w->window,ID_REFRESH,tr(L"Làm mới",L"Refresh"));
-    Platform p=platform();
-    for (int i=0;i<ListView_GetItemCount(w->list);++i) {
-        if (w->bloat) {
-            StringCchCopyW(w->packages[i].display,ARRAYSIZE(w->packages[i].display),packages_display_name(w->packages[i].family));
-            ListView_SetItemText(w->list,i,0,w->packages[i].display);
-        } else {
-            const wchar_t *reason; action_supported((unsigned)i,&p,&reason);
-            ListView_SetItemText(w->list,i,0,(wchar_t *)tr(actions[i].vi,actions[i].en));
-            ListView_SetItemText(w->list,i,1,(wchar_t *)reason);
+    if (w->bloat) {
+        const wchar_t *columns[]={tr(L"Ứng dụng",L"App"),tr(L"Định danh gói",L"Package identity")};
+        for (int i=0;i<2;++i) {
+            LVCOLUMNW column={0}; column.mask=LVCF_TEXT; column.pszText=(wchar_t *)columns[i]; ListView_SetColumn(w->list,i,&column);
         }
+        for (unsigned i=0;i<w->package_count;++i) {
+            StringCchCopyW(w->packages[i].display,ARRAYSIZE(w->packages[i].display),packages_display_name(w->packages[i].family));
+            ListView_SetItemText(w->list,(int)i,0,w->packages[i].display);
+        }
+    } else {
+        SetDlgItemTextW(w->window,ID_RECOVERY_HEADING,tr(L"Bảo vệ trước khi tối ưu",L"Recovery before optimization"));
+        SetDlgItemTextW(w->window,ID_REG_BACKUP,tr(L"Tạo bản sao Registry (Khuyên dùng)",L"Create a registry backup (Recommended)"));
+        SetDlgItemTextW(w->window,ID_RESTORE_POINT,tr(L"Tạo điểm khôi phục hệ thống (Khuyên dùng)",L"Create a system restore point (Recommended)"));
+        SetDlgItemTextW(w->window,ID_RECOVERY_NOTE,tr(
+            L"Chỉ tạo khi xác nhận thay đổi tại đây. Điểm khôi phục cần bật System Protection.",
+            L"Created only when you confirm changes here. Restore points require System Protection."));
+        SendDlgItemMessageW(w->window,ID_SEARCH,EM_SETCUEBANNER,FALSE,(LPARAM)tr(L"Tìm cài đặt…",L"Search settings…"));
+        for (unsigned g=0;g<ARRAYSIZE(setup_groups);++g) SetWindowTextW(w->group_labels[g],tr(setup_groups[g].vi,setup_groups[g].en));
+        for (unsigned a=0;a<ACTION_COUNT;++a) SetWindowTextW(w->checks[a],tr(actions[a].vi,actions[a].en));
+        setup_refresh_support(w);
+        if (w->detail_action>=0) setup_detail(w,(unsigned)w->detail_action);
+        else SetWindowTextW(w->detail,tr(L"Cài đặt không hỗ trợ sẽ bị làm mờ. Mọi lựa chọn tối ưu mặc định đều tắt; chỉ áp dụng sau khi bạn xác nhận.",
+            L"Unavailable settings are dimmed. All optimization choices start unchecked; changes require your confirmation."));
     }
-    int selected=ListView_GetNextItem(w->list,-1,LVNI_SELECTED);
-    if (!w->bloat) SetWindowTextW(w->detail,selected>=0 && selected<ACTION_COUNT?
-        tr(details_vi[selected],actions[selected].detail):L"");
     if (w->has_result) {
         wchar_t text[400];
-        StringCchPrintfW(text,ARRAYSIZE(text),tr(L"Xong: %u thao tác thành công, %u lỗi, %u bỏ qua/không hỗ trợ. Xem nhật ký để biết chi tiết.",L"Finished: %u operations succeeded, %u failed, %u skipped/unsupported. See the log for details."),w->done,w->failed,w->skipped);
+        StringCchPrintfW(text,ARRAYSIZE(text),tr(L"Xong: %u thành công, %u lỗi, %u bỏ qua. Xem nhật ký để biết chi tiết.",L"Finished: %u succeeded, %u failed, %u skipped. See the log for details."),w->done,w->failed,w->skipped);
         SetWindowTextW(w->status,text);
-    } else SetWindowTextW(w->status,w->bloat?
-        (w->package_count?tr(L"Chỉ gỡ các ứng dụng đã chọn cho tài khoản hiện tại.",L"Only selected apps will be removed for the current account."):
-                          tr(L"Không tìm thấy ứng dụng tùy chọn trong danh sách.",L"No allowlisted optional apps are installed for this account.")):
-        tr(L"Chọn từng mục để xem ảnh hưởng. Chỉ áp dụng sau khi bạn xác nhận.",L"Select a row to read its effects. Changes require your confirmation."));
+    } else if (w->bloat) SetWindowTextW(w->status,w->package_count?
+        tr(L"Chỉ gỡ ứng dụng đã chọn cho tài khoản hiện tại.",L"Only selected apps will be removed for the current account."):
+        tr(L"Không tìm thấy ứng dụng tùy chọn trong danh sách.",L"No allowlisted optional apps are installed for this account."));
+    else setup_selection_status(w);
+    optimizer_layout(w);
 }
 static LRESULT CALLBACK optimizer_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     OptimizerWindow *w=(OptimizerWindow *)GetWindowLongPtrW(hwnd,GWLP_USERDATA);
     switch (message) {
     case WM_CREATE: {
-        CREATESTRUCTW *cs=(CREATESTRUCTW *)lp; w=cs->lpCreateParams; w->window=hwnd;
-        SetWindowLongPtrW(hwnd,GWLP_USERDATA,(LONG_PTR)w);
-        theme_attach(hwnd);
-        app_control(hwnd,L"STATIC",L"",0,18,14,870,28,ID_HEADING);
-        w->list=app_control(hwnd,WC_LISTVIEWW,L"",LVS_REPORT|LVS_SHOWSELALWAYS|WS_BORDER|WS_TABSTOP,18,50,860,395,ID_LIST);
-        ListView_SetExtendedListViewStyle(w->list,LVS_EX_CHECKBOXES|LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
-        list_column(w->list,0,w->bloat?tr(L"Ứng dụng",L"App"):tr(L"Thay đổi",L"Change"),490);
-        list_column(w->list,1,w->bloat?tr(L"Định danh gói", L"Package identity"):tr(L"Khả năng hỗ trợ",L"Availability"),355);
-        w->detail=app_control(hwnd,L"EDIT",L"",ES_MULTILINE|ES_READONLY|WS_VSCROLL|WS_BORDER,18,455,860,86,ID_DETAIL);
-        w->status=app_control(hwnd,L"STATIC",L"",0,18,551,860,36,ID_STATUS);
-        app_control(hwnd,L"BUTTON",tr(L"Áp dụng mục đã chọn",L"Apply selected"),BS_PUSHBUTTON|WS_TABSTOP,18,594,190,34,ID_APPLY);
-        if (!w->bloat) {
-            app_control(hwnd,L"BUTTON",tr(L"Khôi phục cài đặt",L"Restore last settings"),BS_PUSHBUTTON|WS_TABSTOP,220,594,195,34,ID_RESTORE);
-            app_control(hwnd,L"BUTTON",tr(L"Gỡ ứng dụng thừa",L"Remove optional apps"),BS_PUSHBUTTON|WS_TABSTOP,427,594,200,34,ID_BLOAT);
+        w=((CREATESTRUCTW *)lp)->lpCreateParams; w->window=hwnd; w->detail_action=-1;
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,(LONG_PTR)w); theme_attach(hwnd);
+        w->heading_font=CreateFontW(-28,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        w->section_font=CreateFontW(-16,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        HWND heading=app_control(hwnd,L"STATIC",L"",0,0,0,0,0,ID_HEADING);
+        SendMessageW(heading,WM_SETFONT,(WPARAM)w->heading_font,TRUE);
+        app_control(hwnd,L"STATIC",L"",0,0,0,0,0,ID_SUBHEADING);
+        if (w->bloat) {
+            w->list=app_control(hwnd,WC_LISTVIEWW,L"",LVS_REPORT|LVS_SHOWSELALWAYS|WS_TABSTOP,0,0,0,0,ID_LIST);
+            if (!w->list) return -1;
+            ListView_SetExtendedListViewStyle(w->list,LVS_EX_CHECKBOXES|LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
+            list_column(w->list,0,L"",420); list_column(w->list,1,L"",420);
+        } else {
+            HWND recovery=app_control(hwnd,L"STATIC",L"",0,0,0,0,0,ID_RECOVERY_HEADING);
+            SendMessageW(recovery,WM_SETFONT,(WPARAM)w->section_font,TRUE); SetPropW(recovery,L"WAIOCard",(HANDLE)1);
+            int options[]={ID_REG_BACKUP,ID_RESTORE_POINT};
+            for (unsigned i=0;i<ARRAYSIZE(options);++i) {
+                HWND control=app_control(hwnd,L"BUTTON",L"",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,0,0,0,0,options[i]);
+                if (!control) return -1;
+                SetPropW(control,L"WAIOCard",(HANDLE)1); SendMessageW(control,BM_SETCHECK,BST_CHECKED,0);
+            }
+            SetPropW(app_control(hwnd,L"STATIC",L"",0,0,0,0,0,ID_RECOVERY_NOTE),L"WAIOCard",(HANDLE)1);
+            HWND search=app_control(hwnd,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP,0,0,0,0,ID_SEARCH);
+            SendMessageW(search,EM_SETLIMITTEXT,159,0);
+            WNDCLASSW cls={0}; cls.hInstance=g_instance; cls.lpfnWndProc=setup_view_proc;
+            cls.lpszClassName=L"WAIO.SetupCards"; cls.hCursor=LoadCursorW(NULL,IDC_ARROW); RegisterClassW(&cls);
+            w->viewport=CreateWindowExW(WS_EX_CONTROLPARENT,cls.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,
+                0,0,1,1,hwnd,(HMENU)(INT_PTR)ID_VIEWPORT,g_instance,w);
+            if (!w->viewport) return -1;
+            for (unsigned g=0;g<ARRAYSIZE(setup_groups);++g) {
+                w->group_labels[g]=app_control(w->viewport,L"STATIC",L"",0,0,0,0,0,0);
+                SetPropW(w->group_labels[g],L"WAIOCard",(HANDLE)1); SendMessageW(w->group_labels[g],WM_SETFONT,(WPARAM)w->section_font,TRUE);
+            }
+            for (unsigned a=0;a<ACTION_COUNT;++a) {
+                HWND control=app_control(w->viewport,L"BUTTON",L"",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,0,0,0,0,ID_ACTION_BASE+(int)a);
+                if (!control) return -1;
+                w->checks[a]=control; SetPropW(control,L"WAIOCard",(HANDLE)1);
+                SetWindowSubclass(control,setup_check_proc,2,a);
+            }
+            app_control(hwnd,L"BUTTON",L"",WS_TABSTOP,0,0,0,0,ID_RESTORE);
+            app_control(hwnd,L"BUTTON",L"",WS_TABSTOP,0,0,0,0,ID_BLOAT);
         }
-        app_control(hwnd,L"BUTTON",tr(L"Bỏ chọn tất cả",L"Clear selection"),BS_PUSHBUTTON|WS_TABSTOP,640,594,125,34,ID_NONE);
-        app_control(hwnd,L"BUTTON",tr(L"Làm mới",L"Refresh"),BS_PUSHBUTTON|WS_TABSTOP,776,594,100,34,ID_REFRESH);
-        refresh_list(w); translate_optimizer(w); return 0;
+        w->detail=app_control(hwnd,L"EDIT",L"",ES_MULTILINE|ES_READONLY|WS_VSCROLL,0,0,0,0,ID_DETAIL);
+        w->status=app_control(hwnd,L"STATIC",L"",0,0,0,0,0,ID_STATUS);
+        HWND apply=app_control(hwnd,L"BUTTON",L"",WS_TABSTOP,0,0,0,0,ID_APPLY);
+        SetPropW(apply,L"WAIOPrimary",(HANDLE)1);
+        app_control(hwnd,L"BUTTON",L"",WS_TABSTOP,0,0,0,0,ID_NONE);
+        app_control(hwnd,L"BUTTON",L"",WS_TABSTOP,0,0,0,0,ID_REFRESH);
+        refresh_list(w); translate_optimizer(w); w->initialized=TRUE; return 0;
     }
+    case WM_GETMINMAXINFO:
+        ((MINMAXINFO *)lp)->ptMinTrackSize.x=860; ((MINMAXINFO *)lp)->ptMinTrackSize.y=700; return 0;
+    case WM_SIZE:
+        if (w && w->initialized && wp!=SIZE_MINIMIZED) optimizer_layout(w);
+        return 0;
     case WM_COMMAND:
         if (!w || app_busy(NULL)) return 0;
+        if (LOWORD(wp)>=ID_ACTION_BASE && LOWORD(wp)<ID_ACTION_BASE+ACTION_COUNT) {
+            unsigned a=LOWORD(wp)-ID_ACTION_BASE;
+            if (!w->supported[a]) SendMessageW(w->checks[a],BM_SETCHECK,BST_UNCHECKED,0);
+            w->has_result=FALSE; setup_detail(w,a); setup_selection_status(w); return 0;
+        }
         switch (LOWORD(wp)) {
         case ID_APPLY: begin_apply(w); break;
         case ID_RESTORE: begin_restore(w); break;
         case ID_BLOAT: bloatware_show(hwnd); break;
-        case ID_REFRESH: refresh_list(w); break;
-        case ID_NONE: for (int i=0;i<ListView_GetItemCount(w->list);++i) ListView_SetCheckState(w->list,i,FALSE); break;
+        case ID_REFRESH: refresh_list(w); translate_optimizer(w); break;
+        case ID_SEARCH:
+            if (HIWORD(wp)==EN_CHANGE && w->initialized) { w->scroll=0; setup_layout_cards(w); }
+            break;
+        case ID_NONE:
+            if (w->bloat) {
+                for (int i=0;i<ListView_GetItemCount(w->list);++i) { ListView_SetCheckState(w->list,i,FALSE); }
+            } else {
+                for (unsigned a=0;a<ACTION_COUNT;++a) SendMessageW(w->checks[a],BM_SETCHECK,BST_UNCHECKED,0);
+            }
+            w->has_result=FALSE; setup_selection_status(w); break;
         } return 0;
-    case WM_NOTIFY: {
-        NMHDR *hdr=(NMHDR *)lp;
-        if (!w || hdr->idFrom!=ID_LIST) break;
-        if (hdr->code==LVN_ITEMCHANGING && !w->bloat) {
-            NMLISTVIEW *v=(NMLISTVIEW *)lp;
-            if (v->iItem>=0 && v->iItem<ACTION_COUNT && (v->uNewState&LVIS_STATEIMAGEMASK)==INDEXTOSTATEIMAGEMASK(2) && (v->uOldState&LVIS_STATEIMAGEMASK)!=INDEXTOSTATEIMAGEMASK(2)) {
-                Platform p=platform(); const wchar_t *reason;
-                if (!action_supported((unsigned)v->iItem,&p,&reason)) { SetWindowTextW(w->detail,reason); return TRUE; }
-            }
-        }
-        if (hdr->code==LVN_ITEMCHANGED) {
-            NMLISTVIEW *v=(NMLISTVIEW *)lp;
-            if (v->iItem>=0 && (v->uNewState&LVIS_SELECTED)) {
-                if (w->bloat && (unsigned)v->iItem<w->package_count) SetWindowTextW(w->detail,w->packages[v->iItem].full_name);
-                else if (!w->bloat && v->iItem<ACTION_COUNT) SetWindowTextW(w->detail,tr(details_vi[v->iItem],actions[v->iItem].detail));
-            }
+    case WM_NOTIFY:
+        if (w && w->bloat && ((NMHDR *)lp)->idFrom==ID_LIST && ((NMHDR *)lp)->code==LVN_ITEMCHANGED) {
+            NMLISTVIEW *change=(NMLISTVIEW *)lp;
+            if (change->iItem>=0 && (unsigned)change->iItem<w->package_count && (change->uNewState&LVIS_SELECTED))
+                SetWindowTextW(w->detail,w->packages[change->iItem].full_name);
         } break;
-    }
     case WM_APP_JOB_DONE: {
         if (!w) return 0;
         app_finish_job(hwnd);
-        wchar_t text[400];
-        StringCchPrintfW(text,ARRAYSIZE(text),tr(L"Xong: %u thao tác thành công, %u lỗi, %u bỏ qua/không hỗ trợ. Xem nhật ký để biết chi tiết.",L"Finished: %u operations succeeded, %u failed, %u skipped/unsupported. See the log for details."),w->done,w->failed,w->skipped);
-        app_log(L"%s",text);
         if (w->bloat) refresh_list(w);
-        w->has_result=TRUE;
-        SetWindowTextW(w->status,text);
-        MessageBoxW(hwnd,text,L"Win AIO Optimize",MB_OK|(w->failed?MB_ICONWARNING:MB_ICONINFORMATION));
+        w->has_result=TRUE; translate_optimizer(w);
+        wchar_t text[400]; GetWindowTextW(w->status,text,ARRAYSIZE(text)); app_log(L"%s",text);
         return 0;
     }
     case WM_APP_LANGUAGE:
         if (w) translate_optimizer(w);
         return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT paint; HDC dc=BeginPaint(hwnd,&paint); RECT area; GetClientRect(hwnd,&area);
+        FillRect(dc,&area,g_theme.background_brush);
+        if (w && !w->bloat) { RECT card={24,103,area.right-24,227}; theme_card(dc,&card); }
+        EndPaint(hwnd,&paint); return 0;
+    }
     case WM_CLOSE:
         if (app_busy(NULL) || !IsWindowEnabled(hwnd)) return 0;
         DestroyWindow(hwnd); return 0;
-    case WM_DESTROY:
-        if (w) { free(w->restore); free(w); }
-        SetWindowLongPtrW(hwnd,GWLP_USERDATA,0); return 0;
+    case WM_NCDESTROY:
+        if (w) {
+            DeleteObject(w->heading_font); DeleteObject(w->section_font); free(w->restore);
+            if (w->initialized) free(w);
+        }
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,0); break;
     }
     return DefWindowProcW(hwnd,message,wp,lp);
 }
 static HWND show_optimizer(HWND owner,BOOL bloat) {
     static ATOM cls=0;
     static HWND windows[2]={NULL,NULL};
-    if (IsWindow(windows[bloat?1:0])) { SetForegroundWindow(windows[bloat?1:0]); return windows[bloat?1:0]; }
+    if (IsWindow(windows[bloat?1:0])) {
+        ShowWindow(windows[bloat?1:0],SW_RESTORE); SetForegroundWindow(windows[bloat?1:0]); return windows[bloat?1:0];
+    }
     if (!cls) {
         WNDCLASSW wc={0}; wc.lpfnWndProc=optimizer_proc; wc.hInstance=g_instance; wc.lpszClassName=L"WAIONativeOptimizer";
-        wc.hCursor=LoadCursorW(NULL,IDC_ARROW); wc.hbrBackground=(HBRUSH)(COLOR_WINDOW+1); cls=RegisterClassW(&wc);
+        wc.hCursor=LoadCursorW(NULL,IDC_ARROW); wc.hIcon=LoadIconW(g_instance,MAKEINTRESOURCEW(1)); cls=RegisterClassW(&wc);
     }
     OptimizerWindow *w=calloc(1,sizeof(*w)); if (!w) return NULL; w->bloat=bloat;
-    HWND hwnd=CreateWindowExW(WS_EX_CONTROLPARENT,L"WAIONativeOptimizer",bloat?tr(L"Gỡ ứng dụng tùy chọn",L"Remove optional apps"):L"Windows Setup",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,916,682,GetAncestor(owner,GA_ROOTOWNER),NULL,g_instance,w);
+    HWND hwnd=CreateWindowExW(WS_EX_CONTROLPARENT,L"WAIONativeOptimizer",L"Windows Setup",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+        CW_USEDEFAULT,CW_USEDEFAULT,bloat?1000:1280,880,GetAncestor(owner,GA_ROOTOWNER),NULL,g_instance,w);
     if (!hwnd) { free(w); return NULL; }
     windows[bloat?1:0]=hwnd;
     ShowWindow(hwnd,app_is_smoke_test()?SW_HIDE:SW_SHOW);
@@ -742,6 +1004,11 @@ static HWND show_optimizer(HWND owner,BOOL bloat) {
 }
 void optimizer_show(HWND owner) { show_optimizer(owner,FALSE); }
 void bloatware_show(HWND owner) { show_optimizer(owner,TRUE); }
+void optimizer_preview(HWND owner) {
+    if (!app_is_smoke_test()) return;
+    HWND window=show_optimizer(owner,FALSE);
+    if (window) ShowWindow(window,SW_SHOWNOACTIVATE);
+}
 BOOL optimizer_ui_test(HWND owner) {
     if (!app_is_smoke_test()) return FALSE;
     BOOL original=g_vi,ok=TRUE;
@@ -749,28 +1016,52 @@ BOOL optimizer_ui_test(HWND owner) {
         HWND window=show_optimizer(owner,bloat!=0);
         if (!window) { ok=FALSE; break; }
         OptimizerWindow *w=(OptimizerWindow *)GetWindowLongPtrW(window,GWLP_USERDATA);
-        for (int i=0;i<ListView_GetItemCount(w->list);++i)
-            if (ListView_GetCheckState(w->list,i)) ok=FALSE;
         if (bloat) {
-            /* Synthetic allowlisted inventory keeps the test independent of installed apps. */
             ListView_DeleteAllItems(w->list); w->package_count=1;
             StringCchCopyW(w->packages[0].family,ARRAYSIZE(w->packages[0].family),L"Microsoft.GetHelp_8wekyb3d8bbwe");
             list_row(w->list,0,L"Get Help",L"test package identity");
+            ListView_SetCheckState(w->list,0,TRUE);
+            ListView_SetItemState(w->list,0,LVIS_SELECTED,LVIS_SELECTED);
+        } else {
+            for (unsigned a=0;a<ACTION_COUNT;++a)
+                if (SendMessageW(w->checks[a],BM_GETCHECK,0,0)!=BST_UNCHECKED) ok=FALSE;
+            if (IsDlgButtonChecked(window,ID_REG_BACKUP)!=BST_CHECKED || IsDlgButtonChecked(window,ID_RESTORE_POINT)!=BST_CHECKED) ok=FALSE;
+            SendMessageW(w->checks[A_EXTENSIONS],BM_CLICK,0,0);
+            CheckDlgButton(window,ID_REG_BACKUP,BST_UNCHECKED);
+            SetDlgItemTextW(window,ID_SEARCH,L"extensions");
+            for (unsigned a=0;a<ACTION_COUNT;++a)
+                if (w->visible[a]!=(a==A_EXTENSIONS)) ok=FALSE;
         }
-        int row=bloat?0:A_EXTENSIONS;
-        ListView_SetCheckState(w->list,row,TRUE);
-        ListView_SetItemState(w->list,row,LVIS_SELECTED,LVIS_SELECTED);
-        for (int lang=0;lang<2;++lang) {
-            wchar_t text[1024]; g_vi=lang!=0;
-            SendMessageW(window,WM_APP_LANGUAGE,0,0);
-            if (!ListView_GetCheckState(w->list,row) || ListView_GetNextItem(w->list,-1,LVNI_SELECTED)!=row) ok=FALSE;
-            ListView_GetItemText(w->list,row,0,text,ARRAYSIZE(text));
-            const wchar_t *expected=bloat?tr(L"Get Help (trợ giúp)",L"Get Help"):tr(actions[A_EXTENSIONS].vi,actions[A_EXTENSIONS].en);
-            if (wcscmp(text,expected)) ok=FALSE;
-            if (!bloat) {
+        for (int iteration=0;iteration<6;++iteration) {
+            wchar_t text[1600];
+            SendDlgItemMessageW(owner,111,CB_SETCURSEL,(iteration%2)?0:1,0);
+            SendMessageW(owner,WM_COMMAND,MAKEWPARAM(111,CBN_SELCHANGE),(LPARAM)GetDlgItem(owner,111));
+            if (bloat) {
+                if (!ListView_GetCheckState(w->list,0) || ListView_GetNextItem(w->list,-1,LVNI_SELECTED)!=0) ok=FALSE;
+                ListView_GetItemText(w->list,0,0,text,ARRAYSIZE(text));
+                if (wcscmp(text,tr(L"Get Help (trợ giúp)",L"Get Help"))) ok=FALSE;
+            } else {
+                if (SendMessageW(w->checks[A_EXTENSIONS],BM_GETCHECK,0,0)!=BST_CHECKED ||
+                    IsDlgButtonChecked(window,ID_REG_BACKUP)!=BST_UNCHECKED ||
+                    IsDlgButtonChecked(window,ID_RESTORE_POINT)!=BST_CHECKED) ok=FALSE;
+                GetWindowTextW(w->checks[A_EXTENSIONS],text,ARRAYSIZE(text));
+                if (wcscmp(text,tr(actions[A_EXTENSIONS].vi,actions[A_EXTENSIONS].en))) ok=FALSE;
+                GetDlgItemTextW(window,ID_SEARCH,text,ARRAYSIZE(text));
+                if (wcscmp(text,L"extensions")) ok=FALSE;
                 GetWindowTextW(w->detail,text,ARRAYSIZE(text));
-                if (wcscmp(text,tr(details_vi[A_EXTENSIONS],actions[A_EXTENSIONS].detail))) ok=FALSE;
+                if (!wcsstr(text,tr(details_vi[A_EXTENSIONS],actions[A_EXTENSIONS].detail))) ok=FALSE;
             }
+        }
+        if (!bloat) {
+            SetDlgItemTextW(window,ID_SEARCH,L"no_such_setting_938");
+            for (unsigned a=0;a<ACTION_COUNT;++a) if (w->visible[a]) ok=FALSE;
+            SetDlgItemTextW(window,ID_SEARCH,L"");
+            SetWindowPos(window,NULL,0,0,900,740,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+            setup_scroll(w,100000);
+            if (w->scroll<=0) ok=FALSE;
+            SendMessageW(window,WM_COMMAND,ID_NONE,0);
+            if (SendMessageW(w->checks[A_EXTENSIONS],BM_GETCHECK,0,0)!=BST_UNCHECKED) ok=FALSE;
+            if (IsDlgButtonChecked(window,ID_RESTORE_POINT)!=BST_CHECKED) ok=FALSE;
         }
         DestroyWindow(window);
     }

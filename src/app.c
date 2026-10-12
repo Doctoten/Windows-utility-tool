@@ -61,7 +61,7 @@ HWND app_control(HWND parent, const wchar_t *cls, const wchar_t *text, DWORD sty
                  int x, int y, int w, int h, int id) {
     if (!lstrcmpiW(cls, L"COMBOBOX")) style |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
     if (!lstrcmpiW(cls, L"STATIC")) style |= SS_NOPREFIX;
-    if (!lstrcmpiW(cls, L"EDIT") || !wcscmp(cls, WC_LISTVIEWW)) style |= WS_BORDER;
+    if (!lstrcmpiW(cls, L"EDIT") || !wcscmp(cls, WC_LISTVIEWW)) style &= ~WS_BORDER;
     DWORD extended = 0;
     HWND control = CreateWindowExW(extended, cls, text, WS_CHILD | WS_VISIBLE | style,
                                   x, y, w, h, parent, (HMENU)(INT_PTR)id, g_instance, NULL);
@@ -138,7 +138,7 @@ void app_error(HWND owner, const wchar_t *context, DWORD error) {
 }
 
 /* A scrollable review is necessary for long lists of selected tweaks/packages. */
-enum { ID_PROTECT_REG = 701, ID_PROTECT_RESTORE, ID_PROTECT_STATUS };
+enum { ID_PROTECT_STATUS = 703 };
 typedef struct {
     const wchar_t *details;
     BOOL accepted, protect, registry, restore, working;
@@ -159,17 +159,11 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
                     0, 24, 18, 744, 30, 0);
         HWND details = app_control(window, L"EDIT", state->details,
                     ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP,
-                    24, 58, 744, state->protect ? 235 : 315, 10);
+                    24, 58, 744, 315, 10);
         if (!details) return -1; /* Never accept changes if their review cannot be displayed. */
         SendMessageW(details, EM_SETLIMITTEXT, 131072, 0);
         SendMessageW(details, EM_SETSEL, 0, 0);
         if (state->protect) {
-            if (!app_control(window, L"BUTTON", tr(L"Tạo bản sao Registry (Khuyên dùng)", L"Create a registry backup (Recommended)"),
-                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 306, 744, 32, ID_PROTECT_REG) ||
-                !app_control(window, L"BUTTON", tr(L"Tạo điểm khôi phục hệ thống (Khuyên dùng)", L"Create a system restore point (Recommended)"),
-                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 344, 744, 32, ID_PROTECT_RESTORE)) return -1;
-            SendDlgItemMessageW(window, ID_PROTECT_REG, BM_SETCHECK, BST_CHECKED, 0);
-            SendDlgItemMessageW(window, ID_PROTECT_RESTORE, BM_SETCHECK, BST_CHECKED, 0);
             app_control(window, L"STATIC", tr(
                 L"Registry: lưu SYSTEM, SOFTWARE và HKCU vào thư mục dữ liệu ứng dụng.\r\n"
                 L"System Protection phải được bật; Windows có thể dùng lại điểm khôi phục gần đây.\r\n"
@@ -191,8 +185,6 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
         if (!state || state->working) return 0;
         if (LOWORD(wp) == IDOK || LOWORD(wp) == IDCANCEL) {
             if (LOWORD(wp) == IDOK && state->protect) {
-                state->registry = SendDlgItemMessageW(window, ID_PROTECT_REG, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                state->restore = SendDlgItemMessageW(window, ID_PROTECT_RESTORE, BM_GETCHECK, 0, 0) == BST_CHECKED;
                 if (state->registry || state->restore) {
                     state->working = TRUE;
                     SetDlgItemTextW(window, ID_PROTECT_STATUS, tr(L"Đang tạo bản bảo vệ… Chưa áp dụng thay đổi. Vui lòng chờ.",
@@ -216,8 +208,8 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
         else {
             wchar_t text[512];
             StringCchPrintfW(text, ARRAYSIZE(text), tr(
-                L"Bảo vệ thất bại (mã %lu). CHƯA áp dụng thay đổi. Xem nhật ký; kiểm tra dung lượng/quyền truy cập và System Protection. Thử lại, Hủy, hoặc tự bỏ chọn mục không thể tạo.",
-                L"Protection failed (code %lu). NO changes applied. Check the log, disk space/permissions and System Protection. Retry, Cancel, or explicitly uncheck the unavailable option."), state->error);
+                L"Bảo vệ thất bại (mã %lu). CHƯA áp dụng thay đổi. Kiểm tra nhật ký hoặc System Protection, rồi thử lại. Chọn Hủy để về Windows Setup và điều chỉnh lựa chọn bảo vệ.",
+                L"Protection failed (code %lu). NO changes applied. Check the log or System Protection, then retry. Choose Cancel to return to Windows Setup and adjust recovery options."), state->error);
             SetDlgItemTextW(window, ID_PROTECT_STATUS, text); app_log(L"%s", text);
             SetFocus(GetDlgItem(window, IDCANCEL));
         }
@@ -228,13 +220,15 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
     return DefWindowProcW(window, message, wp, lp);
 }
 
-static BOOL confirm_dialog(HWND owner, const wchar_t *details, BOOL protect) {
+static BOOL confirm_dialog(HWND owner, const wchar_t *details, BOOL registry, BOOL restore) {
     if (smoke_mode) return FALSE;
     WNDCLASSW cls = {0};
     cls.hInstance = g_instance; cls.lpfnWndProc = confirm_proc;
     cls.lpszClassName = L"WAIO.Confirm"; cls.hCursor = LoadCursorW(NULL, IDC_ARROW);
     RegisterClassW(&cls);
-    Confirmation state = {0}; state.details = details; state.protect = protect;
+    Confirmation state = {0}; state.details = details; state.protect = registry || restore;
+    state.registry = registry; state.restore = restore;
+    BOOL protect = state.protect;
     RECT area; GetWindowRect(owner, &area);
     RECT work; SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     int height = protect ? 660 : 488;
@@ -277,21 +271,20 @@ static BOOL confirm_dialog(HWND owner, const wchar_t *details, BOOL protect) {
     if (quit) PostQuitMessage(0);
     return state.accepted && IsWindow(owner) && !quit;
 }
-BOOL app_confirm(HWND owner, const wchar_t *details) { return confirm_dialog(owner, details, FALSE); }
-BOOL app_confirm_system(HWND owner, const wchar_t *details) { return confirm_dialog(owner, details, TRUE); }
+BOOL app_confirm(HWND owner, const wchar_t *details) { return confirm_dialog(owner, details, FALSE, FALSE); }
+BOOL app_confirm_setup(HWND owner, const wchar_t *details, BOOL registry, BOOL restore) {
+    return confirm_dialog(owner, details, registry, restore);
+}
 
 static BOOL confirmation_ui_test(HWND owner) {
     WNDCLASSW cls = {0}; cls.hInstance = g_instance; cls.lpfnWndProc = confirm_proc;
     cls.lpszClassName = L"WAIO.Confirm"; cls.hCursor = LoadCursorW(NULL, IDC_ARROW); RegisterClassW(&cls);
-    Confirmation state = {0}; state.protect = TRUE; state.details = L"Read-only consent test";
+    Confirmation state = {0}; state.protect = TRUE; state.registry = TRUE; state.restore = TRUE;
+    state.details = L"Read-only consent test";
     HWND window = CreateWindowExW(WS_EX_CONTROLPARENT, cls.lpszClassName, L"", WS_CAPTION | WS_SYSMENU,
         0, 0, 812, 660, owner, NULL, g_instance, &state);
     if (!window) return FALSE;
-    BOOL ok = SendDlgItemMessageW(window, ID_PROTECT_REG, BM_GETCHECK, 0, 0) == BST_CHECKED &&
-        SendDlgItemMessageW(window, ID_PROTECT_RESTORE, BM_GETCHECK, 0, 0) == BST_CHECKED &&
-        LOWORD(SendMessageW(window, DM_GETDEFID, 0, 0)) == IDCANCEL;
-    SendMessageW(GetDlgItem(window, ID_PROTECT_REG), BM_CLICK, 0, 0);
-    ok = ok && SendDlgItemMessageW(window, ID_PROTECT_REG, BM_GETCHECK, 0, 0) == BST_UNCHECKED;
+    BOOL ok = state.registry && state.restore && LOWORD(SendMessageW(window, DM_GETDEFID, 0, 0)) == IDCANCEL;
     /* A failed preparatory job must leave the review open and unaccepted. */
     state.working = TRUE; state.error = ERROR_SERVICE_DISABLED;
     SendMessageW(window, WM_APP_JOB_DONE, 0, 0);
@@ -467,8 +460,8 @@ static void update_labels(HWND window) {
     SetDlgItemTextW(window, ID_BACKUPS, tr(L"Mở thư mục sao lưu", L"Open backups"));
     SetDlgItemTextW(window, ID_SYSTEM_PROTECTION, tr(L"Bảo vệ hệ thống…", L"System Protection…"));
     SetDlgItemTextW(window, ID_PROTECTION_NOTE, tr(
-        L"BẢO VỆ TRƯỚC KHI THAY ĐỔI\r\nSao lưu Registry + điểm khôi phục được đề xuất trong mỗi lần xác nhận.\r\nBạn kiểm soát lựa chọn; thay đổi chỉ bắt đầu sau bước bảo vệ đã chọn.",
-        L"RECOVERY BEFORE CHANGES\r\nRegistry backup + restore point are recommended at every confirmation.\r\nYou choose the options; selected protection completes before changes."));
+        L"THIẾT LẬP WINDOWS\r\nChọn tối ưu theo từng nhóm và xem rõ ảnh hưởng trước khi áp dụng.\r\nCác lựa chọn sao lưu Registry và điểm khôi phục nằm trong Windows Setup.",
+        L"WINDOWS SETUP\r\nChoose settings by category and review their effects before applying.\r\nRegistry backup and restore point options are available in Windows Setup."));
     wchar_t summary[768]; system_summary(summary, ARRAYSIZE(summary)); SetDlgItemTextW(window, ID_PC_SUMMARY, summary);
     HWND theme = GetDlgItem(window, ID_THEME);
     SendMessageW(theme, CB_RESETCONTENT, 0, 0);
@@ -548,8 +541,12 @@ static void paint_dashboard(HWND window) {
 }
 
 static BOOL CALLBACK translate_owned(HWND window, LPARAM lp) {
-    if (window != (HWND)lp && GetAncestor(window, GA_ROOTOWNER) == (HWND)lp)
+    wchar_t cls[80] = L"";
+    GetClassNameW(window, cls, ARRAYSIZE(cls));
+    if (window != (HWND)lp && !wcsncmp(cls, L"WAIO", 4)) {
         SendMessageW(window, WM_APP_LANGUAGE, 0, 0);
+        RedrawWindow(window, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
     return TRUE;
 }
 
@@ -559,7 +556,6 @@ static BOOL CALLBACK find_owned_modal(HWND window, LPARAM argument) {
     wchar_t cls[80] = L"";
     GetClassNameW(window, cls, ARRAYSIZE(cls));
     if (window != search->root && !IsWindowEnabled(window) &&
-        GetAncestor(window, GA_ROOTOWNER) == search->root &&
         (!wcsncmp(cls, L"WAIO", 4) || !wcscmp(cls, L"#32770"))) {
         search->active = TRUE;
         return FALSE;
@@ -673,6 +669,7 @@ static LRESULT CALLBACK main_proc(HWND window, UINT message, WPARAM wp, LPARAM l
                 language_thread();
                 update_labels(window);
                 EnumThreadWindows(GetCurrentThreadId(), translate_owned, (LPARAM)window);
+                RedrawWindow(window, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
                 language_save(window);
             }
             break;
@@ -764,13 +761,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     (void)previous; (void)command;
     g_instance = instance;
     int argc = 0; wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    BOOL test = FALSE, smoke = FALSE, inventory = FALSE, preview = FALSE;
+    BOOL test = FALSE, smoke = FALSE, inventory = FALSE, preview = FALSE, preview_setup = FALSE;
     int language_override = -1;
     int theme_override = -1;
     for (int i = 1; argv && i < argc; ++i) {
         if (!wcscmp(argv[i], L"--self-test")) test = TRUE;
         else if (!wcscmp(argv[i], L"--smoke-test")) smoke = TRUE;
         else if (!wcscmp(argv[i], L"--preview")) { preview = TRUE; smoke = TRUE; }
+        else if (!wcscmp(argv[i], L"--preview=setup")) { preview = TRUE; smoke = TRUE; preview_setup = TRUE; }
         else if (!wcscmp(argv[i], L"--inventory-test")) inventory = TRUE;
         else if (!wcscmp(argv[i], L"--theme=light")) theme_override = 1;
         else if (!wcscmp(argv[i], L"--theme=dark")) theme_override = 2;
@@ -834,7 +832,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
             if (app_data_path(old, ARRAYSIZE(old), L"activity.previous.log")) MoveFileExW(log_path, old, MOVEFILE_REPLACE_EXISTING);
         }
     }
-    g_font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    g_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                          OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     title_font = CreateFontW(-30, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                              OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
@@ -850,6 +848,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     if (window) {
         ShowWindow(window, smoke && !preview ? SW_HIDE : show); UpdateWindow(window);
         if (preview) SetTimer(window, 2, 60000, NULL);
+        if (preview_setup) optimizer_preview(window);
         if (smoke && !preview) {
             BOOL original = g_vi, ok = TRUE;
             SetDlgItemTextW(window, ID_DELAY, L"42");
@@ -869,7 +868,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
             BOOL info_ok = system_info_ui_test(window);
             printf("System information translation/state: %s\n", info_ok ? "PASS" : "FAIL"); fflush(stdout);
             BOOL consent_ok = confirmation_ui_test(window);
-            printf("Recovery consent defaults/cancel: %s\n", consent_ok ? "PASS" : "FAIL"); fflush(stdout);
+            printf("Recovery consent failure/cancel: %s\n", consent_ok ? "PASS" : "FAIL"); fflush(stdout);
             ok = ok && network_ok && optimizer_ok && info_ok && consent_ok && !smoke_failed;
             g_vi = original; smoke_failed = !ok;
             printf("Read-only UI/language test: %s. No settings changed.\n", ok ? "PASS" : "FAIL");
