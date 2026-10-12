@@ -1,5 +1,6 @@
 #include "app.h"
 #include <aclapi.h>
+#include <objbase.h>
 #include <sddl.h>
 #include <srrestoreptapi.h>
 #include <stdio.h>
