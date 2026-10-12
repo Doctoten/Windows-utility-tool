@@ -11,7 +11,7 @@ target_include_directories(win_aio_optimize PRIVATE src)
 target_compile_definitions(win_aio_optimize PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00)
 target_link_libraries(win_aio_optimize PRIVATE
   user32 gdi32 comctl32 comdlg32 shell32 ole32 uuid uxtheme
-  advapi32 iphlpapi ws2_32 wlanapi powrprof runtimeobject dwmapi oleaut32 wbemuuid dxgi)
+  advapi32 iphlpapi ws2_32 wlanapi powrprof runtimeobject dwmapi oleaut32 wbemuuid dxgi dxguid)
 if(MSVC)
   target_compile_options(win_aio_optimize PRIVATE "$<$<COMPILE_LANGUAGE:C>:/W4;/WX;/utf-8>")
   target_link_options(win_aio_optimize PRIVATE /MANIFEST:NO /DYNAMICBASE /NXCOMPAT)
