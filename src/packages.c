@@ -112,6 +112,8 @@ DWORD packages_enumerate(PackageItem *items, unsigned capacity, unsigned *count,
 }
 
 HRESULT packages_remove(const PackageItem *item) {
+    if (app_is_smoke_test()) return E_ACCESSDENIED;
+    if (!item) return E_INVALIDARG;
     /* Re-derive identity from the exact full name at the mutation boundary. */
     wchar_t actual_family[160];
     UINT32 length=ARRAYSIZE(actual_family);

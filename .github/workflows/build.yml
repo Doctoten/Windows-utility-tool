@@ -15,13 +15,15 @@ jobs:
       - name: Build with warnings as errors
         run: cmake --build build-native --config Release
       - name: Read-only validation
-        run: ctest --test-dir build-native -C Release --output-on-failure
-      - name: Package executable and SHA256
         shell: pwsh
-        run: |
-          $binary = 'build-native/bin/Release/win_aio_optimize.exe'
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
-          Set-Content -LiteralPath "$binary.sha256" -Value "$hash  win_aio_optimize.exe" -Encoding ascii
+        run: ./scripts/validate.ps1 -Binary build-native/bin/Release/win_aio_optimize.exe
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-logs
+          path: build-native/validation-*/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: win-aio-optimize-6.0.0-x64

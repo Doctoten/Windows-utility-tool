@@ -164,10 +164,10 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
         SendMessageW(details, EM_SETLIMITTEXT, 131072, 0);
         SendMessageW(details, EM_SETSEL, 0, 0);
         if (state->protect) {
-            app_control(window, L"BUTTON", tr(L"Tạo bản sao Registry (Khuyên dùng)", L"Create a registry backup (Recommended)"),
-                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 306, 744, 32, ID_PROTECT_REG);
-            app_control(window, L"BUTTON", tr(L"Tạo điểm khôi phục hệ thống (Khuyên dùng)", L"Create a system restore point (Recommended)"),
-                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 344, 744, 32, ID_PROTECT_RESTORE);
+            if (!app_control(window, L"BUTTON", tr(L"Tạo bản sao Registry (Khuyên dùng)", L"Create a registry backup (Recommended)"),
+                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 306, 744, 32, ID_PROTECT_REG) ||
+                !app_control(window, L"BUTTON", tr(L"Tạo điểm khôi phục hệ thống (Khuyên dùng)", L"Create a system restore point (Recommended)"),
+                WS_TABSTOP | BS_AUTOCHECKBOX, 24, 344, 744, 32, ID_PROTECT_RESTORE)) return -1;
             SendDlgItemMessageW(window, ID_PROTECT_REG, BM_SETCHECK, BST_CHECKED, 0);
             SendDlgItemMessageW(window, ID_PROTECT_RESTORE, BM_SETCHECK, BST_CHECKED, 0);
             app_control(window, L"STATIC", tr(
@@ -197,7 +197,12 @@ static LRESULT CALLBACK confirm_proc(HWND window, UINT message, WPARAM wp, LPARA
                     state->working = TRUE;
                     SetDlgItemTextW(window, ID_PROTECT_STATUS, tr(L"Đang tạo bản bảo vệ… Chưa áp dụng thay đổi. Vui lòng chờ.",
                         L"Preparing recovery options… No changes applied. Please wait."));
-                    if (!app_start_job(window, confirmation_prepare, state)) state->working = FALSE;
+                    if (!app_start_job(window, confirmation_prepare, state)) {
+                        state->working = FALSE;
+                        SetDlgItemTextW(window, ID_PROTECT_STATUS, tr(
+                            L"Không bắt đầu được bước bảo vệ. Chưa áp dụng thay đổi. Thử lại hoặc Hủy.",
+                            L"Could not start recovery preparation. No changes applied. Retry or Cancel."));
+                    }
                     return 0;
                 }
             }
@@ -708,8 +713,14 @@ static LRESULT CALLBACK main_proc(HWND window, UINT message, WPARAM wp, LPARAM l
     return DefWindowProcW(window, message, wp, lp);
 }
 
+static BOOL elevation_arguments(wchar_t *text, size_t capacity, BOOL vietnamese, int theme) {
+    const wchar_t *appearance = theme == 1 ? L" --theme=light" : theme == 2 ? L" --theme=dark" : L"";
+    return SUCCEEDED(StringCchPrintfW(text, capacity, L"--lang=%s%s", vietnamese ? L"vi" : L"en", appearance));
+}
+
 static int self_test(void) {
     unsigned checks = 0, failed = 0; DWORD seconds = 0;
+    wchar_t arguments[64];
 #define CHECK(x) do { ++checks; if (!(x)) { ++failed; fprintf(stderr, "FAIL: %s\n", #x); } } while (0)
     CHECK(backup_valid_delay(L"1", FALSE, &seconds) && seconds == 60);
     CHECK(backup_valid_delay(L"2", TRUE, &seconds) && seconds == 7200);
@@ -736,8 +747,14 @@ static int self_test(void) {
     CHECK(optimizer_self_test());
     CHECK(protection_self_test());
     CHECK(system_info_self_test());
+    CHECK(elevation_arguments(arguments, ARRAYSIZE(arguments), FALSE, 1) && !wcscmp(arguments, L"--lang=en --theme=light"));
+    CHECK(elevation_arguments(arguments, ARRAYSIZE(arguments), TRUE, 2) && !wcscmp(arguments, L"--lang=vi --theme=dark"));
+    CHECK(elevation_arguments(arguments, ARRAYSIZE(arguments), TRUE, -1) && !wcscmp(arguments, L"--lang=vi"));
+    CHECK(!elevation_arguments(arguments, 4, FALSE, 1));
     CHECK(app_run_tool(L"cmd.exe", L"/c exit 0") == ERROR_ACCESS_DENIED);
     CHECK(app_run_tool(L"..\\netsh.exe", L"") == ERROR_ACCESS_DENIED);
+    CHECK(app_run_tool(L"netsh.exe", L"interface ipv4 reset") == ERROR_ACCESS_DENIED);
+    CHECK(protection_prepare(TRUE, TRUE) == ERROR_ACCESS_DENIED);
 #undef CHECK
     printf("Read-only self-test: %u checks, %u failures. No system settings changed.\n", checks, failed);
     return failed ? 1 : 0;
@@ -765,6 +782,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     if (!test && !smoke && !inventory) language_load();
     if (language_override >= 0) g_vi = language_override != 0;
     language_thread();
+    /* Every diagnostic entry point uses the same side-effect guards. */
+    smoke_mode = test || smoke || inventory;
     if (test) return self_test();
     if (inventory) {
         HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -773,7 +792,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
         int code = FAILED(hr) ? 1 : system_info_inventory_test();
         CoUninitialize(); return code;
     }
-    smoke_mode = smoke;
     if (app_windows_build() < 10240) {
         MessageBoxW(NULL, tr(L"Ứng dụng yêu cầu Windows 10 hoặc Windows 11.", L"Windows 10 or Windows 11 is required."), L"Win AIO Optimize", MB_OK | MB_ICONERROR); return 1;
     }
@@ -781,9 +799,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
         wchar_t path[MAX_PATH];
         DWORD length = GetModuleFileNameW(NULL, path, ARRAYSIZE(path));
         if (!length || length >= ARRAYSIZE(path)) return ERROR_FILENAME_EXCED_RANGE;
+        wchar_t parameters[64];
+        if (!elevation_arguments(parameters, ARRAYSIZE(parameters), g_vi, theme_override)) return ERROR_INSUFFICIENT_BUFFER;
         SHELLEXECUTEINFOW execute = {0}; execute.cbSize = sizeof(execute);
         execute.lpVerb = L"runas"; execute.lpFile = path;
-        execute.lpParameters = g_vi ? L"--lang=vi" : L"--lang=en"; execute.nShow = SW_SHOWNORMAL;
+        execute.lpParameters = parameters; execute.nShow = SW_SHOWNORMAL;
         if (!ShellExecuteExW(&execute)) { app_error(NULL, tr(L"Cần quyền quản trị", L"Administrator rights are required"), GetLastError()); return 1; }
         return 0;
     }

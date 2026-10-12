@@ -234,10 +234,11 @@ static DWORD power_write(const PowerState *state) {
     if (!err) err=PowerWriteDCValueIndex(NULL,&state->scheme,&no_subgroup,&standby_network,state->dc);
     /* Refresh only if still active; restore must not switch the user's plan. */
     GUID *active=NULL;
-    if (!err && PowerGetActiveScheme(NULL,&active)==ERROR_SUCCESS) {
-        if (IsEqualGUID(active,&state->scheme)) err=PowerSetActiveScheme(NULL,active);
-        LocalFree(active);
+    if (!err) {
+        err=PowerGetActiveScheme(NULL,&active);
+        if (!err && IsEqualGUID(active,&state->scheme)) err=PowerSetActiveScheme(NULL,active);
     }
+    if (active) LocalFree(active);
     return err;
 }
 static DWORD store_open(HANDLE *file) {

@@ -4,6 +4,7 @@
 #include <oleauto.h>
 #include <stdio.h>
 #include <dxgi.h>
+#include <errno.h>
 
 typedef struct { const wchar_t *key, *vi, *en; unsigned units; } Field;
 typedef struct { const wchar_t *query, *vi, *en; const Field *fields; unsigned count; } Category;
@@ -75,13 +76,24 @@ typedef struct { HWND window, list, group, detail; Inventory *inventory, *pendin
 enum { INFO_LIST=4201, INFO_GROUP, INFO_REFRESH, INFO_COPY, INFO_DETAIL, INFO_STATUS, INFO_HEADING, INFO_NOTE };
 static HWND info_window;
 
+static BOOL memory_value(const wchar_t *value, ULONGLONG *bytes) {
+    if (!value || value[0] < L'0' || value[0] > L'9') return FALSE;
+    wchar_t *end = NULL;
+    errno = 0;
+    *bytes = _wcstoui64(value, &end, 10);
+    return errno != ERANGE && end && !*end;
+}
+
 static void variant_text(VARIANT *value, unsigned units, wchar_t *text, size_t capacity) {
+    if (!text || !capacity) return;
     text[0] = L'\0';
     if (V_VT(value) == VT_NULL || V_VT(value) == VT_EMPTY) return;
     if (V_VT(value) == (VT_ARRAY | VT_BSTR)) {
         LONG low, high;
+        if (!V_ARRAY(value) || SafeArrayGetDim(V_ARRAY(value)) != 1) return;
         if (FAILED(SafeArrayGetLBound(V_ARRAY(value), 1, &low)) || FAILED(SafeArrayGetUBound(V_ARRAY(value), 1, &high))) return;
-        for (LONG i = low; i <= high && i - low < 64; ++i) {
+        for (unsigned offset = 0; offset < 64 && (LONGLONG)low + offset <= high; ++offset) {
+            LONG i = (LONG)((LONGLONG)low + offset);
             BSTR part = NULL;
             if (SUCCEEDED(SafeArrayGetElement(V_ARRAY(value), &i, &part)) && part) {
                 if (text[0]) StringCchCatW(text, capacity, L", ");
@@ -94,9 +106,11 @@ static void variant_text(VARIANT *value, unsigned units, wchar_t *text, size_t c
     VARIANT converted; VariantInit(&converted);
     if (SUCCEEDED(VariantChangeType(&converted, value, 0, VT_BSTR)) && V_BSTR(&converted)) {
         if (units) {
-            ULONGLONG bytes = _wcstoui64(V_BSTR(&converted), NULL, 10);
-            double gib = (double)bytes / (units == 2 ? 1048576.0 : 1073741824.0);
-            StringCchPrintfW(text, capacity, L"%.2f GiB", gib);
+            ULONGLONG bytes;
+            if (memory_value(V_BSTR(&converted), &bytes)) {
+                double gib = (double)bytes / (units == 2 ? 1048576.0 : 1073741824.0);
+                StringCchPrintfW(text, capacity, L"%.2f GiB", gib);
+            }
         } else StringCchCopyW(text, capacity, V_BSTR(&converted));
     }
     VariantClear(&converted);
@@ -111,10 +125,15 @@ static void query_error(Inventory *inventory, unsigned category, HRESULT error) 
     ++inventory->errors;
     if (inventory->count >= INFO_MAX) { inventory->truncated = TRUE; return; }
     InfoRow *row = &inventory->rows[inventory->count++]; row->category = category; row->field = -1;
-    StringCchPrintfW(row->value, ARRAYSIZE(row->value), L"WMI: 0x%08lX", (DWORD)error);
+    StringCchPrintfW(row->value, ARRAYSIZE(row->value), L"HRESULT: 0x%08lX", (DWORD)error);
+}
+static void wmi_unavailable(Inventory *inventory, HRESULT error) {
+    for (unsigned c = 0; c < ARRAYSIZE(categories); ++c)
+        if (categories[c].query[0]) query_error(inventory, c, error);
 }
 static void collect_native(Inventory *inventory) {
     const unsigned graphics = 11, boot = 12;
+    unsigned graphics_start = inventory->count;
     IDXGIFactory1 *factory = NULL;
     HRESULT result = CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&factory);
     if (FAILED(result)) query_error(inventory, graphics, result);
@@ -139,6 +158,9 @@ static void collect_native(Inventory *inventory) {
         }
         IDXGIFactory1_Release(factory);
     }
+    if (inventory->count == graphics_start && inventory->count < INFO_MAX) {
+        InfoRow *row = &inventory->rows[inventory->count++]; row->category = graphics; row->field = -1;
+    }
     for (int f = 0; f < 2 && inventory->count < INFO_MAX; ++f) {
         InfoRow *row = &inventory->rows[inventory->count++]; row->category = boot; row->instance = 1; row->field = f;
         if (f == 0) {
@@ -156,7 +178,7 @@ static void collect_native(Inventory *inventory) {
 static void collect_inventory(Inventory *inventory) {
     collect_native(inventory);
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr)) { query_error(inventory, 0, hr); return; }
+    if (FAILED(hr)) { wmi_unavailable(inventory, hr); return; }
     IWbemLocator *locator = NULL; IWbemServices *services = NULL;
     hr = CoCreateInstance(&CLSID_WbemLocator, NULL, CLSCTX_INPROC_SERVER, &IID_IWbemLocator, (void **)&locator);
     BSTR space = SysAllocString(L"ROOT\\CIMV2");
@@ -165,7 +187,7 @@ static void collect_inventory(Inventory *inventory) {
     SysFreeString(space);
     if (SUCCEEDED(hr)) hr = CoSetProxyBlanket((IUnknown *)services, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE,
         NULL, RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE);
-    if (FAILED(hr)) query_error(inventory, 0, hr);
+    if (FAILED(hr)) wmi_unavailable(inventory, hr);
     ULONGLONG deadline = GetTickCount64() + 25000;
     for (unsigned c = 0; SUCCEEDED(hr) && c < ARRAYSIZE(categories); ++c) {
         if (!categories[c].query[0]) continue;
@@ -183,7 +205,12 @@ static void collect_inventory(Inventory *inventory) {
         while (SUCCEEDED(result)) {
             IWbemClassObject *object = NULL; ULONG returned = 0;
             result = IEnumWbemClassObject_Next(objects, 2000, 1, &object, &returned);
+            if (FAILED(result)) {
+                if (object) IWbemClassObject_Release(object);
+                break;
+            }
             if (!returned || !object) {
+                if (object) IWbemClassObject_Release(object);
                 if (result == WBEM_S_TIMEDOUT) result = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
                 break;
             }
@@ -360,11 +387,29 @@ void system_info_show(HWND owner) {
     if (info_window) ShowWindow(info_window, app_is_smoke_test() ? SW_HIDE : SW_SHOW);
 }
 BOOL system_info_self_test(void) {
+    ULONGLONG bytes;
+    if (!memory_value(L"18446744073709551615", &bytes) || bytes != ~(ULONGLONG)0 ||
+        memory_value(L"18446744073709551616", &bytes) || memory_value(L"-1", &bytes) ||
+        memory_value(L"invalid", &bytes) || memory_value(L"10junk", &bytes) || memory_value(L"", &bytes)) return FALSE;
     VARIANT value; VariantInit(&value); V_VT(&value) = VT_BSTR; V_BSTR(&value) = SysAllocString(L"34359738368");
     wchar_t text[80]; variant_text(&value, 1, text, ARRAYSIZE(text)); VariantClear(&value);
     if (wcscmp(text, L"32.00 GiB")) return FALSE;
     V_VT(&value) = VT_NULL; variant_text(&value, 0, text, ARRAYSIZE(text));
     if (text[0]) return FALSE;
+    V_VT(&value) = VT_BSTR; V_BSTR(&value) = SysAllocString(L"not reported");
+    variant_text(&value, 1, text, ARRAYSIZE(text)); VariantClear(&value);
+    if (text[0]) return FALSE; /* Unknown sizes must never appear as zero GiB. */
+    V_VT(&value) = VT_BSTR; V_BSTR(&value) = SysAllocString(L"1048576");
+    variant_text(&value, 2, text, ARRAYSIZE(text)); VariantClear(&value);
+    if (wcscmp(text, L"1.00 GiB")) return FALSE;
+    Inventory *unavailable = calloc(1, sizeof(*unavailable));
+    if (!unavailable) return FALSE;
+    wmi_unavailable(unavailable, E_ACCESSDENIED);
+    BOOL errors_ok = unavailable->count == 11 && unavailable->errors == 11;
+    for (unsigned i = 0; errors_ok && i < unavailable->count; ++i)
+        errors_ok = unavailable->rows[i].category == i && unavailable->rows[i].field == -1;
+    free(unavailable);
+    if (!errors_ok) return FALSE;
     for (unsigned c = 0; c < ARRAYSIZE(categories); ++c)
         for (unsigned f = 0; f < categories[c].count; ++f)
             if (!*categories[c].fields[f].vi || !*categories[c].fields[f].en) return FALSE;

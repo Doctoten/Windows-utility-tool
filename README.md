@@ -181,7 +181,7 @@ build.bat
 run.bat
 ```
 
-Output: `dist\win_aio_optimize.exe`. `run.bat` builds the app if the EXE is missing.
+Output: `dist\win_aio_optimize.exe` and its `.sha256` checksum. `run.bat` builds the app if the EXE is missing.
 
 With CMake and Visual Studio:
 
@@ -191,16 +191,17 @@ cmake --build build-native --config Release
 ctest --test-dir build-native -C Release --output-on-failure
 ```
 
-Output: `build-native/bin/Release/win_aio_optimize.exe`. For Ninja/MinGW, omit `-A x64` and select the appropriate generator/toolchain; output is under `build-native/bin/`.
+Output: `build-native/bin/Release/win_aio_optimize.exe` and its `.sha256` checksum. For Ninja/MinGW, omit `-A x64` and select the appropriate generator/toolchain; output is under `build-native/bin/`.
 
-Run the read-only self-test without elevation or system changes:
+Run the complete read-only validation without elevation or system changes:
 
 ```powershell
-$test = Start-Process -FilePath .\dist\win_aio_optimize.exe -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
-if ($test.ExitCode -ne 0) { throw "Self-test failed: $($test.ExitCode)" }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate.ps1
+# Optional: also query this computer's hardware.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate.ps1 -Inventory
 ```
 
-CI treats compiler warnings as errors and runs self-tests plus hidden UI checks in both languages. The UI test arguments are `--smoke-test --lang=en` and `--smoke-test --lang=vi`. Tests cover DNS validation, shutdown limits, optimization/package boundaries, and language switching without losing input.
+CI treats compiler warnings as errors and runs the same validation script with `-Binary build-native/bin/Release/win_aio_optimize.exe`. It checks UTF-8, PowerShell syntax, version consistency, executable metadata and SHA256, then runs self-tests and all four English/Vietnamese and Light/Dark UI combinations. Tests cover DNS validation, shutdown limits, optimization/package boundaries, recovery failure handling, inventory formatting and language switching without losing input. Logs are saved under `build-native/validation-*` and uploaded by CI. Use `-SourceOnly` to check source files without a built EXE.
 
 Actual system changes need testing in disposable Windows 10/11 VMs with snapshots. See [TESTING.md](TESTING.md) for results and the acceptance checklist. Do not apply optimizations, change DNS, remove apps, or schedule shutdowns just to test on a development machine.
 
@@ -390,7 +391,7 @@ build.bat
 run.bat
 ```
 
-Kết quả: `dist\win_aio_optimize.exe`. `run.bat` build ứng dụng nếu chưa có EXE.
+Kết quả: `dist\win_aio_optimize.exe` và checksum `.sha256`. `run.bat` build ứng dụng nếu chưa có EXE.
 
 Với CMake và Visual Studio:
 
@@ -400,16 +401,17 @@ cmake --build build-native --config Release
 ctest --test-dir build-native -C Release --output-on-failure
 ```
 
-Kết quả: `build-native/bin/Release/win_aio_optimize.exe`. Với Ninja/MinGW, bỏ `-A x64` và chọn generator/toolchain phù hợp; kết quả nằm trong `build-native/bin/`.
+Kết quả: `build-native/bin/Release/win_aio_optimize.exe` và checksum `.sha256`. Với Ninja/MinGW, bỏ `-A x64` và chọn generator/toolchain phù hợp; kết quả nằm trong `build-native/bin/`.
 
-Chạy self-test chỉ đọc, không yêu cầu quyền quản trị hay thay đổi hệ thống:
+Chạy toàn bộ kiểm tra chỉ đọc, không yêu cầu quyền quản trị hay thay đổi hệ thống:
 
 ```powershell
-$test = Start-Process -FilePath .\dist\win_aio_optimize.exe -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
-if ($test.ExitCode -ne 0) { throw "Self-test failed: $($test.ExitCode)" }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate.ps1
+# Tùy chọn: đọc thêm thông tin phần cứng của máy.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate.ps1 -Inventory
 ```
 
-CI coi cảnh báo biên dịch là lỗi, chạy self-test và kiểm thử giao diện ẩn ở hai ngôn ngữ. Tham số kiểm thử giao diện là `--smoke-test --lang=en` và `--smoke-test --lang=vi`. Kiểm tra bao gồm địa chỉ DNS, giới hạn hẹn giờ, ranh giới tối ưu/gỡ gói và đổi ngôn ngữ không mất dữ liệu nhập.
+CI coi cảnh báo biên dịch là lỗi và chạy cùng script kiểm tra với `-Binary build-native/bin/Release/win_aio_optimize.exe`. Script kiểm tra UTF-8, cú pháp PowerShell, phiên bản đồng bộ, thông tin EXE và SHA256, sau đó chạy self-test cùng cả bốn tổ hợp Anh/Việt và Sáng/Tối. Kiểm tra bao gồm DNS, giới hạn hẹn giờ, ranh giới tối ưu/gỡ gói, xử lý lỗi bảo vệ, định dạng thông tin máy và đổi ngôn ngữ không mất dữ liệu nhập. Nhật ký được lưu trong `build-native/validation-*` và tải lên CI. Dùng `-SourceOnly` để kiểm tra source khi chưa build EXE.
 
 Thay đổi hệ thống thực tế cần kiểm thử trên VM Windows 10/11 dùng riêng, có snapshot. Xem [TESTING.md](TESTING.md) để biết kết quả và danh sách nghiệm thu. Không áp dụng tối ưu, đổi DNS, gỡ ứng dụng hoặc hẹn tắt máy chỉ để kiểm thử trên máy phát triển.
 

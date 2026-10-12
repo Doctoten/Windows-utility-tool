@@ -20,6 +20,11 @@ else()
   target_link_options(win_aio_optimize PRIVATE -municode -Wl,--dynamicbase,--nxcompat)
 endif()
 set_target_properties(win_aio_optimize PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+add_custom_command(TARGET win_aio_optimize POST_BUILD
+  COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_SOURCE_DIR}/scripts/write-checksum.ps1" -Binary "$<TARGET_FILE:win_aio_optimize>"
+  VERBATIM)
 enable_testing()
 add_test(NAME read_only_self_test COMMAND win_aio_optimize --self-test)
 add_test(NAME read_only_ui_english COMMAND win_aio_optimize --smoke-test --lang=en --theme=light)

@@ -38,6 +38,11 @@ static DWORD registry_backup(void) {
     wchar_t base[MAX_PATH], folder[MAX_PATH], path[MAX_PATH], guid[40];
     GUID id;
     if (!app_data_path(base, ARRAYSIZE(base), NULL)) return ERROR_PATH_NOT_FOUND;
+    wchar_t volume[MAX_PATH];
+    DWORD flags = 0;
+    if (!GetVolumePathNameW(base, volume, ARRAYSIZE(volume)) ||
+        !GetVolumeInformationW(volume, NULL, 0, NULL, NULL, &flags, NULL, 0)) return GetLastError();
+    if (!(flags & FILE_PERSISTENT_ACLS)) return ERROR_NOT_SUPPORTED;
     if (FAILED(CoCreateGuid(&id)) || !StringFromGUID2(&id, guid, ARRAYSIZE(guid))) return ERROR_GEN_FAILURE;
     if (FAILED(StringCchPrintfW(folder, ARRAYSIZE(folder), L"%s\\Registry-%s", base, guid))) return ERROR_FILENAME_EXCED_RANGE;
     PSECURITY_DESCRIPTOR sd = NULL;
@@ -87,7 +92,8 @@ static DWORD registry_backup(void) {
         return error;
     }
     /* A completion marker distinguishes a complete backup from partial output. */
-    StringCchPrintfW(path, ARRAYSIZE(path), L"%s\\BACKUP-COMPLETE.txt", folder);
+    if (FAILED(StringCchPrintfW(path, ARRAYSIZE(path), L"%s\\BACKUP-COMPLETE.txt", folder)))
+        return ERROR_FILENAME_EXCED_RANGE;
     HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
     const char note[] = "Win AIO Optimize registry backup\r\n"

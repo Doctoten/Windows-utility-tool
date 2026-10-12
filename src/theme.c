@@ -139,7 +139,10 @@ void theme_set(int mode, BOOL save) {
         if (error) app_log(tr(L"Không lưu được giao diện (mã %lu).", L"Could not save theme (code %lu)."), (DWORD)error);
     }
 }
-void theme_destroy(void) { DeleteObject(g_theme.background_brush); DeleteObject(g_theme.surface_brush); }
+void theme_destroy(void) {
+    DeleteObject(g_theme.background_brush); DeleteObject(g_theme.surface_brush);
+    g_theme.background_brush = g_theme.surface_brush = NULL;
+}
 
 static LRESULT CALLBACK themed_proc(HWND window, UINT message, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
     (void)id; (void)data;
@@ -174,7 +177,8 @@ static LRESULT CALLBACK themed_proc(HWND window, UINT message, WPARAM wp, LPARAM
             BOOL selected = (item->itemState & ODS_SELECTED) != 0;
             HBRUSH brush = CreateSolidBrush(selected ? g_theme.hover : g_theme.surface);
             FillRect(item->hDC, &item->rcItem, brush); DeleteObject(brush);
-            SetTextColor(item->hDC, g_theme.text); SetBkMode(item->hDC, TRANSPARENT);
+            SetTextColor(item->hDC, (item->itemState & ODS_DISABLED) ? g_theme.muted : g_theme.text);
+            SetBkMode(item->hDC, TRANSPARENT);
             wchar_t text[256] = L"";
             if (item->itemID != (UINT)-1 && SendMessageW(item->hwndItem, CB_GETLBTEXTLEN, item->itemID, 0) < 256)
                 SendMessageW(item->hwndItem, CB_GETLBTEXT, item->itemID, (LPARAM)text);
