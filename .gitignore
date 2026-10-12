@@ -1,0 +1,12 @@
+# Native builds / local verification
+**/build-native/
+**/dist/
+*.o
+*.obj
+*.pdb
+*.ilk
+*.res
+*.exe
+*.log
+**/Testing/
+.vs/

@@ -1,0 +1,31 @@
+name: Native Windows build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure C11 / x64
+        run: cmake -S . -B build-native -A x64
+      - name: Build with warnings as errors
+        run: cmake --build build-native --config Release
+      - name: Read-only validation
+        run: ctest --test-dir build-native -C Release --output-on-failure
+      - name: Package executable and SHA256
+        shell: pwsh
+        run: |
+          $binary = 'build-native/bin/Release/win_aio_optimize.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$binary.sha256" -Value "$hash  win_aio_optimize.exe" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-aio-optimize-6.0.0-x64
+          path: |
+            build-native/bin/Release/win_aio_optimize.exe
+            build-native/bin/Release/win_aio_optimize.exe.sha256
+            install.ps1

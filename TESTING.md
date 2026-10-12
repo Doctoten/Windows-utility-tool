@@ -1,0 +1,41 @@
+# Win AIO Optimize 6.0 — validation
+
+Local validation on 2026-10-12: LLVM-MinGW x64 release build passed with `-Wall -Wextra -Werror`. Read-only self-tests report 27 checks and zero failures, including native WinRT PackageManager activation, recovery-step failure/order checks and inventory formatting. UI smoke tests cover English/Vietnamese in Light/Dark: main, network, optimizer, optional-app and system-information windows, plus recommended recovery defaults and cancellation. Inputs and selections are preserved. Read-only hardware inventory returned 107 entries with zero query errors on the development machine. Dashboard captures in both modes were inspected locally. The smoke path does not load/write user preferences, run commands, create registry backups/restore points, or apply optimizations. MSVC/GitHub Actions and the privileged VM acceptance matrix below have not been run locally.
+
+Executable product/version metadata, strict UTF-8 decoding, PowerShell bootstrapper parsing and manifest XML parsing passed. Imports are Windows system/UCRT DLLs. The local `dist/win_aio_optimize.exe.sha256` matches the rebuilt executable. Installer download/publication has not been tested against a published release.
+
+## Automated, read-only
+
+- Build with C11 and warnings as errors (`build.bat` or CMake).
+- Run `win_aio_optimize.exe --self-test`; expect exit code 0. This path bypasses UAC and never opens the normal app or changes settings.
+- Parse `install.ps1` with the PowerShell parser; do not execute the download on a machine without published matching release assets.
+- Run `win_aio_optimize.exe --smoke-test --lang=en` and `--smoke-test --lang=vi`; expect exit code 0. These hidden native windows test both translation directions while preserving input and selections, then close. Network tests use a synthetic adapter; package tests use an allowlisted synthetic row. No DNS configuration or package deployment occurs. This is not proof that privileged operations work.
+- CTest runs the self-test and all four language/theme UI combinations, each with a 45-second timeout.
+- `--inventory-test` reads real WMI/DXGI/firmware information without UAC or settings changes. It prints only row/error counts. Provider failures or missing firmware permissions may be environment-specific; inspect the UI for the affected category.
+- `--preview --lang=en --theme=light` (or `--lang=vi --theme=dark`) opens a read-only dashboard for visual review and closes after 60 seconds. Only language/theme selection is interactive; preferences are not saved. Do not use this mode for functional acceptance of system operations.
+
+## Manual acceptance in disposable VM snapshots
+
+Use Windows 10 22H2 and supported Windows 11 builds, including a Home/Pro machine and an Enterprise machine. Record edition/build, result codes, and before/after state. Exercise both UI languages, keyboard navigation, display scaling, cancellation, and error dialogs.
+
+| Area | Check |
+| --- | --- |
+| Startup | UAC cancellation exits cleanly, a second instance focuses the first, correct effective account shown. |
+| Languages | On a fresh account use Windows UI language (Vietnamese, otherwise English). Change the selector, close/reopen, verify the preference persists. Verify `--lang=en`/`--lang=vi` override one launch without rewriting the saved preference. Check DNS text, list selection/checkboxes and timer values survive switching. A busy job or modal confirmation blocks switching. Windows-owned buttons/tool output may follow installed system resources. |
+| Consent | All optimization checkboxes start clear; Cancel, Escape, window close, and default Enter leave Windows unchanged. Confirm lists exactly the selected items. |
+| Recovery | Registry backup/restore-point options start checked only inside confirmation. Cancel creates neither. Check all four checkbox combinations. Denied backup access/disk full must stop before the restore step or requested mutation. Disabled System Protection/missing SrClient must stop before mutation after any completed registry backup. Retry or explicitly uncheck; no automatic bypass. Verify SYSTEM/SOFTWARE/HKCU hive files, restrictive inherited ACLs and completion marker. Confirm current-user scope, unique folders and no overwritten earlier backup. |
+| Restore points | Enable System Protection in a disposable VM; confirm begin/end returns a valid sequence and point is visible in Windows. Repeat within the configured frequency window and verify honest reuse reporting. Do not silently change frequency or enable protection. Verify no mutation occurs on either API failure. Exercise actual recovery from the VM snapshot rather than replacing development-machine registry hives. |
+| Appearance | Windows theme default, app-only Light/Dark choice, persistence after reopen, live Windows light/dark change, High Contrast, keyboard focus and checkbox operation. Inspect main and secondary dialogs, combo popups, headers, read-only values and disabled controls at 100%, 125%, 150% and 200% scaling. Windows-owned chrome/dialogs can follow OS styling. |
+| System information | Check categories against Windows tools: RAM modules, >4 GiB VRAM, multiple GPUs/disks/adapters, UEFI/Secure Boot and battery/no battery. Verify unavailable values and query errors, category filter, full-value selection, explicit clipboard copy, refresh and read-only behavior. No automatic log/upload of hardware identifiers. Test disabled WMI and slow providers. |
+| Background work | Window remains repaintable; a second job and application close cannot interrupt a mutation. Canceling an unrelated dialog cannot close a worker's owner. |
+| Optimizer | On each supported option inspect the exact registry/service/power state; unsupported edition/build/hardware is reported without false success. |
+| Restore | Existing DWORD values and absent values are restored correctly; service startup and power settings restore from their saved values. Corrupt/truncated snapshots fail closed. |
+| Search/AI | Verify actual Search, Edge, widgets and AI behavior after sign-out/reboot; do not infer effectiveness from successful registry writes alone. |
+| Bloatware | Only listed installed optional packages can be selected; Store/framework/shell packages are absent. Cancel changes nothing; removal checks Windows deployment result. Reinstall test apps before restoring VM snapshot. |
+| DNS | Select a disconnected and connected adapter; test both families and providers, one custom server, two servers, malformed addresses, duplicates, DHCP restoration, secondary server failure and adapter removal between selection/application. Record original DNS first. |
+| WiFi | No adapter/service stopped, empty profile list, export protected/plaintext XML, denied access, Unicode SSID/path, valid/invalid XML import. Confirm credentials never enter activity.log. |
+| Drivers | DISM succeeds to a fresh directory; cancel folder selection, disk full/read-only destination, process failure and reboot-required exit code are reported correctly. |
+| Shutdown | Reject zero/negative/overflow/non-numeric input. In a disposable VM only, schedule, reopen, cancel, and reboot to verify persisted state expiry. Check warning about unsaved work. |
+| Packaging | Clean build without Python; packaged executable icon/version/manifest present; installer rejects bad checksum and wrong version. |
+
+Actual registry changes, package removal, DNS changes and shutdown are intentionally excluded from automated tests on the developer machine. A successful build/self-test does not replace this VM acceptance pass.
