@@ -25,7 +25,31 @@ English and Vietnamese are included in the app. Choose the changes you want, rea
 > [!IMPORTANT]
 > All optimization options start unchecked. Nothing is applied at startup. Every optimization requires your selection and confirmation, and Windows is never restarted automatically.
 
-#### Run the portable EXE
+#### Quick method
+
+**Download & run the script automatically via PowerShell.**
+
+1. Open PowerShell or Windows Terminal.
+2. Copy and paste this command into PowerShell:
+
+   ```powershell
+   & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/Doctoten/Windows-utility-tool/main/install.ps1")))
+   ```
+
+3. Wait for the launcher to download Win AIO Optimize, verify its SHA256 and product version, then open the app.
+4. Accept the Windows Administrator prompt. Select your language and carefully review each setting before confirming changes.
+
+**No manual download or installation is needed.** The command retrieves the launcher directly into PowerShell; it does not save a separate `.ps1` file. The launcher automatically downloads the portable EXE and checksum to `%LOCALAPPDATA%\WinAIOOptimize\Downloads`. Internet access is required.
+
+The launcher targets version `6.0.0` and stops if the release, checksum or version check fails. It never applies optimizations itself. SHA256 verifies file integrity; it is not a publisher signature.
+
+> [!NOTE]
+> The command requires `install.ps1` on the repository's `main` branch and a published `v6.0.0` release containing `win_aio_optimize.exe` and `win_aio_optimize.exe.sha256`. If these are unavailable, use the build instructions below.
+
+#### Manual method
+
+<details>
+<summary>Download and run the portable EXE yourself.</summary>
 
 1. Open [Releases](https://github.com/Doctoten/Windows-utility-tool/releases) and choose a release containing `win_aio_optimize.exe` and its `.sha256` file.
 2. Download the EXE and checksum to a folder of your choice. If packaged as a ZIP, extract it first.
@@ -34,28 +58,6 @@ English and Vietnamese are included in the app. Choose the changes you want, rea
 5. Select your language, open a feature, and review the proposed changes before confirming.
 
 **The EXE is the app. No installation wizard or batch file is needed to use a release.** A locally built copy is available at `dist\win_aio_optimize.exe`.
-
-> [!NOTE]
-> The native 6.0 download requires the updated source and matching release assets to be published. If these files are unavailable, use the build instructions below. Older Python releases are not the native app described here.
-
-#### Download & run the script automatically via PowerShell
-
-<details>
-<summary>Download, verify, and open the portable app with PowerShell.</summary>
-
-1. Open PowerShell or Windows Terminal.
-2. Paste and run:
-
-   ```powershell
-   $script = Join-Path $env:TEMP 'WinAIOOptimize-install.ps1'
-   Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Doctoten/Windows-utility-tool/main/install.ps1' -OutFile $script
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
-   ```
-
-3. Wait for the helper to download the native EXE and verify its SHA256 and product version.
-4. Accept the Windows Administrator prompt, then choose and confirm operations in the app.
-
-The helper downloads version `6.0.0`. It stops if the release or checksum is missing, or verification fails. It does not install the app or apply Windows optimizations. SHA256 checks file integrity; it is not a publisher signature.
 
 </details>
 
@@ -240,7 +242,31 @@ Developed by **Doctoten**. [Back to usage](#usage-en) · [Tiếng Việt](#tieng
 > [!IMPORTANT]
 > Mọi mục tối ưu mặc định bỏ chọn. Không tự áp dụng khi khởi động. Mỗi tối ưu cần người dùng chọn và xác nhận; ứng dụng không tự khởi động lại Windows.
 
-#### Chạy EXE portable
+#### Cách nhanh
+
+**Tải và chạy script tự động qua PowerShell.**
+
+1. Mở PowerShell hoặc Windows Terminal.
+2. Sao chép và dán lệnh sau vào PowerShell:
+
+   ```powershell
+   & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/Doctoten/Windows-utility-tool/main/install.ps1")))
+   ```
+
+3. Chờ công cụ tự tải Win AIO Optimize, kiểm tra SHA256 và phiên bản rồi mở ứng dụng.
+4. Chấp nhận yêu cầu Administrator của Windows. Chọn ngôn ngữ, đọc kỹ từng cài đặt và xác nhận trước khi thay đổi.
+
+**Không cần tự tải file hay cài đặt.** Lệnh đọc script trực tiếp vào PowerShell, không lưu một file `.ps1` riêng. Script tự tải EXE portable và checksum vào `%LOCALAPPDATA%\WinAIOOptimize\Downloads`. Cách này cần kết nối Internet.
+
+Script mở phiên bản `6.0.0` và dừng nếu thiếu release, checksum hoặc xác minh phiên bản thất bại. Script không tự áp dụng tối ưu. SHA256 kiểm tra tính toàn vẹn của file, không phải chữ ký nhà phát hành.
+
+> [!NOTE]
+> Để lệnh hoạt động, nhánh `main` phải có `install.ps1` và release `v6.0.0` đã công bố phải chứa `win_aio_optimize.exe` cùng `win_aio_optimize.exe.sha256`. Nếu chưa có, dùng hướng dẫn build bên dưới.
+
+#### Cách thủ công
+
+<details>
+<summary>Tự tải và chạy EXE portable.</summary>
 
 1. Mở [Bản phát hành](https://github.com/Doctoten/Windows-utility-tool/releases), chọn bản có `win_aio_optimize.exe` và file `.sha256` tương ứng.
 2. Tải EXE và checksum vào thư mục bạn muốn. Nếu được đóng gói dạng ZIP, giải nén trước.
@@ -249,28 +275,6 @@ Developed by **Doctoten**. [Back to usage](#usage-en) · [Tiếng Việt](#tieng
 5. Chọn ngôn ngữ, mở chức năng cần dùng và xem lại thay đổi trước khi xác nhận.
 
 **EXE chính là ứng dụng. Bản phát hành không cần trình cài đặt hoặc file batch để chạy.** Bản build tại máy nằm ở `dist\win_aio_optimize.exe`.
-
-> [!NOTE]
-> Cách tải bản native 6.0 yêu cầu source mới và các file phát hành tương ứng đã được công bố. Nếu chưa có các file này, dùng hướng dẫn build bên dưới. Những bản Python cũ không phải ứng dụng native được mô tả ở đây.
-
-#### Tải và chạy script tự động qua PowerShell
-
-<details>
-<summary>Tải, xác minh và mở ứng dụng portable bằng PowerShell.</summary>
-
-1. Mở PowerShell hoặc Windows Terminal.
-2. Dán và chạy:
-
-   ```powershell
-   $script = Join-Path $env:TEMP 'WinAIOOptimize-install.ps1'
-   Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Doctoten/Windows-utility-tool/main/install.ps1' -OutFile $script
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
-   ```
-
-3. Chờ công cụ tải EXE native, kiểm tra SHA256 và phiên bản sản phẩm.
-4. Chấp nhận yêu cầu Administrator của Windows, sau đó chọn và xác nhận thao tác trong ứng dụng.
-
-Công cụ tải phiên bản `6.0.0`. Nó dừng nếu thiếu release, checksum hoặc xác minh thất bại. Công cụ không cài đặt ứng dụng hay áp dụng tối ưu Windows. SHA256 kiểm tra tính toàn vẹn của file, không phải chữ ký nhà phát hành.
 
 </details>
 
